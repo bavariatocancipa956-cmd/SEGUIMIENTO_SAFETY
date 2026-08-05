@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dashboard_roturas_screen.dart';
-import 'reporte_hora_hora_screen.dart'; // 👈 IMPORTADO
+import 'reporte_hora_hora_screen.dart';
+import 'dashboard_estibas_screen.dart';
+import 'estibas_entregadas_screen.dart';
+import 'inventario_estibas_screen.dart';
 
 class PantallaPrincipal extends StatefulWidget {
   const PantallaPrincipal({super.key});
@@ -9,15 +12,17 @@ class PantallaPrincipal extends StatefulWidget {
   State<PantallaPrincipal> createState() => _PantallaPrincipalState();
 }
 
-class _PantallaPrincipalState extends State<PantallaPrincipal> {
-  // Estados para controlar desplegables
-  bool _menuSafetyExpandido = true;
-  bool _menuRoturaExpandido = true;
+class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTickerProviderStateMixin {
+  // Estados para los menús desplegables
+  bool _menuSeguridadExpandido = true;
+  bool _menuFmsExpandido = false;
+  bool _menuRoturaExpandido = false;
+  bool _menuReprocesosExpandido = true;
 
   bool _mostrarSidebar = true;
 
   // Vista inicial predeterminada
-  String _vistaActual = 'ROTURA_DASHBOARD';
+  String _vistaActual = 'INVENTARIO_ESTIBAS';
 
   void _toggleSidebar() {
     setState(() {
@@ -31,13 +36,19 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       backgroundColor: const Color(0xFFF1F3F9),
       body: Row(
         children: [
-          if (_mostrarSidebar) _buildSidebar(),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: _mostrarSidebar ? _buildSidebar() : const SizedBox.shrink(),
+          ),
           Expanded(
             child: Column(
               children: [
                 _buildHeader(),
                 Expanded(
-                  child: _obtenerVistaActual(),
+                  child: ClipRect(
+                    child: _obtenerVistaActual(),
+                  ),
                 ),
               ],
             ),
@@ -52,17 +63,27 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       case 'ROTURA_DASHBOARD':
         return DashboardRoturasScreen(onToggleSidebar: _toggleSidebar);
       case 'ROTURA_HORA_HORA':
-        return ReporteHoraHoraScreen(onToggleSidebar: _toggleSidebar); // 👈 CONECTADO
-      case 'DTO':
-        return const Center(child: Text('Módulo DTO (En construcción)', style: TextStyle(color: Colors.grey, fontSize: 16)));
+        return ReporteHoraHoraScreen(onToggleSidebar: _toggleSidebar);
+      case 'REPROCESOS_ESTIBAS':
+        return DashboardEstibasScreen(onToggleSidebar: _toggleSidebar);
+      case 'ENTREGA_ESTIBAS':
+        return const EstibasEntregadasScreen();
+      case 'INVENTARIO_ESTIBAS':
+        return const InventarioEstibasScreen();
+      case 'DASHBOARD_FMS':
+      case 'GESTION_FMS':
+      case 'DASHBOARD_RAYONES':
+      case 'GESTION_RAYONES':
+      case 'DASHBOARD_TRAFICO':
       case 'RUTINA_SAFETY':
-        return const Center(child: Text('Módulo Rutina Safety (En construcción)', style: TextStyle(color: Colors.grey, fontSize: 16)));
-      case 'RAYONES':
-        return const Center(child: Text('Módulo Rayones (En construcción)', style: TextStyle(color: Colors.grey, fontSize: 16)));
-      case 'VAS':
-        return const Center(child: Text('Módulo VAS (En construcción)', style: TextStyle(color: Colors.grey, fontSize: 16)));
-      case 'FMS':
-        return const Center(child: Text('Módulo FMS (En construcción)', style: TextStyle(color: Colors.grey, fontSize: 16)));
+      case 'DTOS':
+      case 'CONTROL_VAS':
+        return Center(
+          child: Text(
+            'Módulo ${_vistaActual.replaceAll('_', ' ')} (En construcción)',
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+        );
       default:
         return const Center(child: Text('Seleccione una opción del menú'));
     }
@@ -72,25 +93,33 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     switch (_vistaActual) {
       case 'ROTURA_DASHBOARD': return 'PLANTA TOCANCIPÁ - DASHBOARD ROTURAS';
       case 'ROTURA_HORA_HORA': return 'PLANTA TOCANCIPÁ - REPORTE HORA A HORA';
-      case 'DTO': return 'PLANTA TOCANCIPÁ - CONTROL DTO';
+      case 'REPROCESOS_ESTIBAS': return 'PLANTA TOCANCIPÁ - REPARACIÓN DE ESTIBAS';
+      case 'ENTREGA_ESTIBAS': return 'PLANTA TOCANCIPÁ - ENTREGA DE ESTIBAS';
+      case 'INVENTARIO_ESTIBAS': return 'PLANTA TOCANCIPÁ - INVENTARIO DE ESTIBAS';
+      case 'DASHBOARD_FMS': return 'PLANTA TOCANCIPÁ - DASHBOARD FMS';
+      case 'GESTION_FMS': return 'PLANTA TOCANCIPÁ - GESTIÓN FMS';
+      case 'DASHBOARD_RAYONES': return 'PLANTA TOCANCIPÁ - DASHBOARD RAYONES';
+      case 'GESTION_RAYONES': return 'PLANTA TOCANCIPÁ - GESTIÓN RAYONES';
+      case 'DASHBOARD_TRAFICO': return 'PLANTA TOCANCIPÁ - PLAN DE TRÁFICO';
       case 'RUTINA_SAFETY': return 'PLANTA TOCANCIPÁ - RUTINA SAFETY';
-      case 'RAYONES': return 'PLANTA TOCANCIPÁ - CONTROL RAYONES';
-      case 'VAS': return 'PLANTA TOCANCIPÁ - CONTROL VAS';
-      case 'FMS': return 'PLANTA TOCANCIPÁ - MÓDULO FMS';
+      case 'DTOS': return 'PLANTA TOCANCIPÁ - CONTROL DTO';
+      case 'CONTROL_VAS': return 'PLANTA TOCANCIPÁ - CONTROL VAS';
       default: return 'OPERACIÓN TOCANCIPÁ';
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 📐 SIDEBAR & MENÚS
+  // ---------------------------------------------------------------------------
   Widget _buildSidebar() {
     return Container(
-      width: 230,
-      color: const Color(0xFF0B0E17),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      width: 260,
+      color: const Color(0xFF0F1522),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 20),
         children: [
-          const SizedBox(height: 25),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18.0),
+            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 25, top: 10),
             child: Row(
               children: [
                 const Icon(Icons.shield_outlined, color: Colors.redAccent, size: 24),
@@ -107,32 +136,53 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
 
-          // NIVEL 1: GRUPO SAFETY
+          // 1. MÓDULO SEGURIDAD
           _buildGrupoExpandible(
-            titulo: 'SAFETY',
-            expandido: _menuSafetyExpandido,
-            onTap: () => setState(() => _menuSafetyExpandido = !_menuSafetyExpandido),
+            titulo: 'SEGURIDAD',
+            expandido: _menuSeguridadExpandido,
+            onTap: () => setState(() => _menuSeguridadExpandido = !_menuSeguridadExpandido),
             submenus: [
-              // NIVEL 2: SUBGRUPO ROTURA (EXPANDIBLE)
+              // SUBGRUPO FMS (Nivel 2)
+              _buildSubGrupoExpandible(
+                titulo: 'MÓDULO FMS',
+                expandido: _menuFmsExpandido,
+                onTap: () => setState(() => _menuFmsExpandido = !_menuFmsExpandido),
+                submenus: [
+                  _buildOpcionSubmenu(titulo: 'Dashboard FMS', idVista: 'DASHBOARD_FMS', icono: Icons.pie_chart_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'Gestión FMS', idVista: 'GESTION_FMS', icono: Icons.list_alt_rounded, nivel: 3),
+                ],
+              ),
+
+              // SUBGRUPO ROTURA (Nivel 2)
               _buildSubGrupoExpandible(
                 titulo: 'ROTURA',
                 expandido: _menuRoturaExpandido,
                 onTap: () => setState(() => _menuRoturaExpandido = !_menuRoturaExpandido),
                 submenus: [
-                  // NIVEL 3: OPCIONES INTERNAS DE ROTURA
-                  _buildOpcionNivel3('DASHBOARD', 'ROTURA_DASHBOARD'),
-                  _buildOpcionNivel3('REPORTE HORA A HORA', 'ROTURA_HORA_HORA'),
+                  _buildOpcionSubmenu(titulo: 'Dashboard Roturas', idVista: 'ROTURA_DASHBOARD', icono: Icons.analytics_outlined, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'Reporte Hora a Hora', idVista: 'ROTURA_HORA_HORA', icono: Icons.access_time_rounded, nivel: 3),
                 ],
               ),
 
-              // OTRAS OPCIONES DE NIVEL 2
-              _buildOpcionSubmenu('DTO', 'DTO'),
-              _buildOpcionSubmenu('RUTINA SAFETY', 'RUTINA_SAFETY'),
-              _buildOpcionSubmenu('RAYONES', 'RAYONES'),
-              _buildOpcionSubmenu('VAS', 'VAS'),
-              _buildOpcionSubmenu('FMS', 'FMS'),
+              _buildOpcionSubmenu(titulo: 'Rutina Safety General', idVista: 'RUTINA_SAFETY', icono: Icons.security_rounded),
+              _buildOpcionSubmenu(titulo: 'Dashboard Rayones', idVista: 'DASHBOARD_RAYONES', icono: Icons.show_chart_rounded),
+              _buildOpcionSubmenu(titulo: 'Gestión Rayones', idVista: 'GESTION_RAYONES', icono: Icons.assignment_rounded),
+              _buildOpcionSubmenu(titulo: 'Dashboard Tráfico', idVista: 'DASHBOARD_TRAFICO', icono: Icons.group_outlined),
+              _buildOpcionSubmenu(titulo: 'Control DTOs', idVista: 'DTOS', icono: Icons.fact_check_outlined),
+              _buildOpcionSubmenu(titulo: 'Gestión VAS', idVista: 'CONTROL_VAS', icono: Icons.verified_outlined),
+            ],
+          ),
+
+          // 2. MÓDULO REPROCESOS
+          _buildGrupoExpandible(
+            titulo: 'REPROCESOS',
+            expandido: _menuReprocesosExpandido,
+            onTap: () => setState(() => _menuReprocesosExpandido = !_menuReprocesosExpandido),
+            submenus: [
+              _buildOpcionSubmenu(titulo: 'Reparación de Estibas', idVista: 'REPROCESOS_ESTIBAS', icono: Icons.bar_chart_rounded),
+              _buildOpcionSubmenu(titulo: 'Entrega de Estibas', idVista: 'ENTREGA_ESTIBAS', icono: Icons.local_shipping_outlined),
+              _buildOpcionSubmenu(titulo: 'Inventario Estibas', idVista: 'INVENTARIO_ESTIBAS', icono: Icons.inventory_rounded),
             ],
           ),
         ],
@@ -140,7 +190,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     );
   }
 
-  // Contenedor principal desplegable (SAFETY)
+  // ---------------------------------------------------------------------------
+  // ⚡ COMPONENTES DE MENÚ FLUIDOS
+  // ---------------------------------------------------------------------------
+
+  // Nivel 1 (SEGURIDAD, REPROCESOS)
   Widget _buildGrupoExpandible({
     required String titulo,
     required bool expandido,
@@ -151,8 +205,10 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       children: [
         InkWell(
           onTap: onTap,
+          splashColor: Colors.white10,
+          highlightColor: Colors.transparent,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -160,26 +216,39 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   titulo,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 0.6,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                Icon(
-                  expandido ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                  color: Colors.grey.shade400,
-                  size: 20,
+                AnimatedRotation(
+                  turns: expandido ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ],
             ),
           ),
         ),
-        if (expandido) ...submenus,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: expandido
+              ? Column(children: submenus)
+              : const SizedBox(width: double.infinity, height: 0),
+        ),
+        Divider(color: Colors.white.withOpacity(0.05), height: 1, thickness: 1),
       ],
     );
   }
 
-  // Subgrupo desplegable secundario (ROTURA)
+  // Nivel 2 (Submenú anidado: ROTURA, FMS)
   Widget _buildSubGrupoExpandible({
     required String titulo,
     required bool expandido,
@@ -188,54 +257,71 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   }) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    titulo,
-                    style: TextStyle(
-                      color: Colors.grey.shade300,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
+        InkWell(
+          onTap: onTap,
+          splashColor: Colors.white10,
+          highlightColor: Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 28, right: 20, top: 10, bottom: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  titulo,
+                  style: const TextStyle(
+                    color: Color(0xFF8E95A5),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
                   ),
-                  Icon(
-                    expandido ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                    color: Colors.grey.shade500,
+                ),
+                AnimatedRotation(
+                  turns: expandido ? 0.5 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Color(0xFF8E95A5),
                     size: 18,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
-        if (expandido) ...submenus,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: Alignment.topCenter,
+          child: expandido
+              ? Column(children: submenus)
+              : const SizedBox(width: double.infinity, height: 0),
+        ),
       ],
     );
   }
 
-  // Opciones de nivel 2 directas (DTO, RAYONES, etc.)
-  Widget _buildOpcionSubmenu(String titulo, String idVista) {
+  // Opciones Clickables (Sirve para nivel 2 normal y nivel 3)
+  Widget _buildOpcionSubmenu({
+    required String titulo,
+    required String idVista,
+    required IconData icono,
+    int nivel = 2
+  }) {
     bool activo = _vistaActual == idVista;
 
+    double margenIzquierdo = nivel == 3 ? 24.0 : 10.0;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      padding: EdgeInsets.only(left: margenIzquierdo, right: 10, bottom: 8),
       child: InkWell(
         onTap: () => setState(() => _vistaActual = idVista),
         borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: 40,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 44,
           decoration: BoxDecoration(
-            color: activo ? const Color(0xFF1B1E2E) : Colors.transparent,
+            color: activo ? const Color(0xFF241C25) : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
           ),
           child: ClipRRect(
@@ -248,22 +334,35 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                     top: 0,
                     bottom: 0,
                     child: Container(
-                      width: 3.5,
-                      color: Colors.redAccent,
+                      width: 4,
+                      color: const Color(0xFFE11D48),
                     ),
                   ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 10),
-                    child: Text(
-                      titulo,
-                      style: TextStyle(
-                        color: activo ? Colors.white : const Color(0xFF8E95A5),
-                        fontSize: 12,
-                        fontWeight: activo ? FontWeight.bold : FontWeight.w500,
-                        letterSpacing: 0.5,
-                      ),
+                    padding: const EdgeInsets.only(left: 18),
+                    child: Row(
+                      children: [
+                        Icon(
+                          icono,
+                          color: activo ? Colors.white : const Color(0xFF748297),
+                          size: nivel == 3 ? 18 : 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            titulo,
+                            style: TextStyle(
+                              color: activo ? Colors.white : const Color(0xFF748297),
+                              fontSize: nivel == 3 ? 13 : 14,
+                              fontWeight: activo ? FontWeight.w600 : FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -275,58 +374,9 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     );
   }
 
-  // Opciones de nivel 3 (Anidadas con mayor sangría interna)
-  Widget _buildOpcionNivel3(String titulo, String idVista) {
-    bool activo = _vistaActual == idVista;
-
-    return Padding(
-      padding: const EdgeInsets.only(left: 20, right: 10, top: 2, bottom: 2),
-      child: InkWell(
-        onTap: () => setState(() => _vistaActual = idVista),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: 38,
-          decoration: BoxDecoration(
-            color: activo ? const Color(0xFF1B1E2E) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              children: [
-                if (activo)
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 3.5,
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 14),
-                    child: Text(
-                      titulo,
-                      style: TextStyle(
-                        color: activo ? Colors.white : const Color(0xFF8E95A5),
-                        fontSize: 11,
-                        fontWeight: activo ? FontWeight.bold : FontWeight.w500,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
+  // ---------------------------------------------------------------------------
+  // 📌 HEADER SUPERIOR
+  // ---------------------------------------------------------------------------
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),

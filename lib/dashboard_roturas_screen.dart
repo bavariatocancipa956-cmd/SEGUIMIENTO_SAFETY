@@ -29,19 +29,27 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   DateTime _fechaDesde = DateTime(2026, 7, 1);
   DateTime _fechaHasta = DateTime(2026, 7, 27);
 
-  String _turnoSel = 'Todos';
-  String _supervisorSel = 'Todos';
-  String _areaSel = 'Todos';
-  String _atribuibleSel = 'Todos';
-  String _tipoSel = 'Todos';
-  String _opmSel = 'Todos';
+  // Filtros - Listas de opciones disponibles
+  List<String> _listaTurnos = [];
+  List<String> _listaSupervisores = [];
+  List<String> _listaAreas = [];
+  List<String> _listaAtribuibles = ['ATRIBUIBLE', 'NO ATRIBUIBLE'];
+  List<String> _listaTipos = [];
+  List<String> _listaOpms = [];
+  List<String> _listaCausales = [];
+  List<String> _listaEscenarios = [];
+  List<String> _listaZonas = [];
 
-  List<String> _listaTurnos = ['Todos'];
-  List<String> _listaSupervisores = ['Todos'];
-  List<String> _listaAreas = ['Todos'];
-  List<String> _listaAtribuibles = ['Todos', 'ATRIBUIBLE', 'NO ATRIBUIBLE'];
-  List<String> _listaTipos = ['Todos'];
-  List<String> _listaOpms = ['Todos'];
+  // Filtros - Selecciones actuales (Múltiple)
+  List<String> _turnosSel = [];
+  List<String> _supervisoresSel = [];
+  List<String> _areasSel = [];
+  List<String> _atribuiblesSel = [];
+  List<String> _tiposSel = [];
+  List<String> _opmsSel = [];
+  List<String> _causalesSel = [];
+  List<String> _escenariosSel = [];
+  List<String> _zonasSel = [];
 
   final GlobalKey _capturaKey = GlobalKey();
 
@@ -51,7 +59,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     _cargarDatosBD();
   }
 
-  // 🍺 MÉTODO DE CONVERSIÓN SEGURA DE HL_TOTAL
   double _parseHl(dynamic val) {
     if (val == null) return 0.0;
     String str = val.toString().trim().replaceAll(',', '.');
@@ -81,11 +88,15 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         final List<dynamic> datosRaw = body['data'] ?? [];
 
         final List<Map<String, dynamic>> datosProcesados = [];
-        final Set<String> turnos = {'Todos'};
-        final Set<String> supervisores = {'Todos'};
-        final Set<String> areas = {'Todos'};
-        final Set<String> tipos = {'Todos'};
-        final Set<String> opms = {'Todos'};
+
+        final Set<String> turnos = {};
+        final Set<String> supervisores = {};
+        final Set<String> areas = {};
+        final Set<String> tipos = {};
+        final Set<String> opms = {};
+        final Set<String> causales = {};
+        final Set<String> escenarios = {};
+        final Set<String> zonas = {};
 
         for (var fila in datosRaw) {
           if (fila is Map) {
@@ -98,22 +109,43 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             String? area = mapa['area']?.toString();
             String? tipo = mapa['tipo_material_2']?.toString() ?? mapa['tipo_material']?.toString();
             String? opm = mapa['personal']?.toString() ?? mapa['reportante']?.toString();
+            String? causal = mapa['causal']?.toString();
+            String? escenario = mapa['escenario']?.toString();
+            String? zona = mapa['zona']?.toString();
 
             if (t != null && t.trim().isNotEmpty) turnos.add(t.trim());
             if (sup != null && sup.trim().isNotEmpty) supervisores.add(sup.trim());
             if (area != null && area.trim().isNotEmpty) areas.add(area.trim());
             if (tipo != null && tipo.trim().isNotEmpty) tipos.add(tipo.trim());
             if (opm != null && opm.trim().isNotEmpty && opm.toUpperCase() != 'NULL') opms.add(opm.trim());
+            if (causal != null && causal.trim().isNotEmpty && causal.toUpperCase() != 'NULL') causales.add(causal.trim());
+            if (escenario != null && escenario.trim().isNotEmpty && escenario.toUpperCase() != 'NULL') escenarios.add(escenario.trim());
+            if (zona != null && zona.trim().isNotEmpty && zona.toUpperCase() != 'NULL') zonas.add(zona.trim());
           }
         }
 
         setState(() {
           _todosLosReportes = datosProcesados;
+
           _listaTurnos = turnos.toList()..sort();
           _listaSupervisores = supervisores.toList()..sort();
           _listaAreas = areas.toList()..sort();
           _listaTipos = tipos.toList()..sort();
           _listaOpms = opms.toList()..sort();
+          _listaCausales = causales.toList()..sort();
+          _listaEscenarios = escenarios.toList()..sort();
+          _listaZonas = zonas.toList()..sort();
+
+          // Inicializar filtros con todas las opciones seleccionadas por defecto
+          _turnosSel = List.from(_listaTurnos);
+          _supervisoresSel = List.from(_listaSupervisores);
+          _areasSel = List.from(_listaAreas);
+          _atribuiblesSel = List.from(_listaAtribuibles);
+          _tiposSel = List.from(_listaTipos);
+          _opmsSel = List.from(_listaOpms);
+          _causalesSel = List.from(_listaCausales);
+          _escenariosSel = List.from(_listaEscenarios);
+          _zonasSel = List.from(_listaZonas);
 
           if (_todosLosReportes.isNotEmpty) {
             List<DateTime> fechas = [];
@@ -167,24 +199,34 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
           if (fSin.isBefore(dSin) || fSin.isAfter(hSin)) return false;
         }
 
-        if (_turnoSel != 'Todos' && row['turno']?.toString() != _turnoSel) return false;
-        if (_supervisorSel != 'Todos' && row['supervisor']?.toString() != _supervisorSel) return false;
-        if (_areaSel != 'Todos' && row['area']?.toString() != _areaSel) return false;
+        String turnoRow = row['turno']?.toString() ?? '';
+        String supRow = row['supervisor']?.toString() ?? '';
+        String areaRow = row['area']?.toString() ?? '';
+        String tipoRow = row['tipo_material_2']?.toString() ?? row['tipo_material']?.toString() ?? '';
+        String opmRow = row['personal']?.toString() ?? row['reportante']?.toString() ?? '';
+        String causalRow = row['causal']?.toString() ?? '';
+        String escRow = row['escenario']?.toString() ?? '';
+        String zonaRow = row['zona']?.toString() ?? '';
 
-        if (_atribuibleSel != 'Todos') {
+        if (_turnosSel.isNotEmpty && !(_turnosSel.contains(turnoRow))) return false;
+        if (_supervisoresSel.isNotEmpty && !(_supervisoresSel.contains(supRow))) return false;
+        if (_areasSel.isNotEmpty && !(_areasSel.contains(areaRow))) return false;
+        if (_tiposSel.isNotEmpty && !(_tiposSel.contains(tipoRow))) return false;
+        if (_opmsSel.isNotEmpty && !(_opmsSel.contains(opmRow))) return false;
+        if (_causalesSel.isNotEmpty && !(_causalesSel.contains(causalRow))) return false;
+        if (_escenariosSel.isNotEmpty && !(_escenariosSel.contains(escRow))) return false;
+        if (_zonasSel.isNotEmpty && !(_zonasSel.contains(zonaRow))) return false;
+
+        if (_atribuiblesSel.isNotEmpty) {
           String at = (row['atribuible']?.toString() ?? '').toUpperCase();
-          if (_atribuibleSel == 'ATRIBUIBLE' && !at.contains('ATRIBUIBLE')) return false;
-          if (_atribuibleSel == 'NO ATRIBUIBLE' && !at.contains('NO')) return false;
-        }
+          bool esNo = at.contains('NO');
+          bool esAtr = at.contains('ATRIBUIBLE') && !esNo;
 
-        if (_tipoSel != 'Todos') {
-          String t = row['tipo_material_2']?.toString() ?? row['tipo_material']?.toString() ?? '';
-          if (t != _tipoSel) return false;
-        }
+          bool pasaFiltro = false;
+          if (_atribuiblesSel.contains('NO ATRIBUIBLE') && esNo) pasaFiltro = true;
+          if (_atribuiblesSel.contains('ATRIBUIBLE') && esAtr) pasaFiltro = true;
 
-        if (_opmSel != 'Todos') {
-          String opm = row['personal']?.toString() ?? row['reportante']?.toString() ?? '';
-          if (opm != _opmSel) return false;
+          if (!pasaFiltro && (esNo || esAtr)) return false;
         }
 
         return true;
@@ -318,11 +360,9 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
       final files = uploadInput.files;
       if (files != null && files.isNotEmpty) {
         final file = files[0];
-
         setState(() {
           filaBase['investigacion'] = 'https://plantatocancipa.site/uploads/simulacion_${file.name}';
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Evidencia cargada exitosamente: ${file.name}'),
@@ -336,6 +376,11 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
   Widget _buildTablaEventosCriticos() {
     var filtrados = _reportesFiltrados.where((r) {
+      String personal = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
+      String pUpper = personal.trim().toUpperCase();
+      if (pUpper == 'NO APLICA' || pUpper == 'N/A' || pUpper == 'NULL' || pUpper.isEmpty) {
+        return false;
+      }
       double cant = double.tryParse(r['cantidad']?.toString() ?? '0') ?? 0;
       return cant >= 150;
     }).toList();
@@ -343,7 +388,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     filtrados.sort((a,b) => (b['fecha_evento']?.toString() ?? '').compareTo(a['fecha_evento']?.toString() ?? ''));
 
     return _buildCardTablaAction(
-        titulo: 'Plan de Acción - Críticos (≥ 150 und)',
+        titulo: 'Plan de Acción - Críticos (≥ 150 und por evento)',
         columnas: const ['FECHA', 'PERSONAL', 'ROTURA', 'HL TOTAL', 'ACCIÓN', 'EVIDENCIA'],
         filas: filtrados.map((e) {
           String rawF = e['fecha_evento']?.toString() ?? e['timestamp_registro']?.toString() ?? '';
@@ -371,8 +416,9 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     Map<String, List<Map<String, dynamic>>> agrupados = {};
     for (var r in _reportesFiltrados) {
       String p = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
-      if (p.trim().isNotEmpty && p.toUpperCase() != 'NULL' && p != 'N/A') {
-        agrupados.putIfAbsent(p, () => []).add(r);
+      String pUpper = p.trim().toUpperCase();
+      if (pUpper.isNotEmpty && pUpper != 'NULL' && pUpper != 'N/A' && pUpper != 'NO APLICA') {
+        agrupados.putIfAbsent(pUpper, () => []).add(r);
       }
     }
 
@@ -389,7 +435,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
           String rawF = ultimoEvento['fecha_evento']?.toString() ?? ultimoEvento['timestamp_registro']?.toString() ?? '';
           String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
-
           int cantidadReincidencias = eventos.length;
           double hlAcumulado = eventos.fold(0.0, (sum, item) => sum + _parseHl(item['hl_total'] ?? item['hl']));
 
@@ -475,6 +520,17 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // 🌟 NUEVA FILA DE TABLAS ZONA y TIPO MATERIAL
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildTablaZona()),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildTablaTipoMaterial()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -540,12 +596,16 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         children: [
           _buildSelectorFecha('DESDE', _fechaDesde, (d) => setState(() => _fechaDesde = d)),
           _buildSelectorFecha('HASTA', _fechaHasta, (d) => setState(() => _fechaHasta = d)),
-          _buildDropdown('TURNO', _turnoSel, _listaTurnos, (v) => setState(() => _turnoSel = v!)),
-          _buildDropdown('SUPERVISOR', _supervisorSel, _listaSupervisores, (v) => setState(() => _supervisorSel = v!)),
-          _buildDropdown('ÁREA', _areaSel, _listaAreas, (v) => setState(() => _areaSel = v!)),
-          _buildDropdown('ATRIBUIBLE', _atribuibleSel, _listaAtribuibles, (v) => setState(() => _atribuibleSel = v!)),
-          _buildDropdown('TIPO', _tipoSel, _listaTipos, (v) => setState(() => _tipoSel = v!)),
-          _buildDropdown('OPM', _opmSel, _listaOpms, (v) => setState(() => _opmSel = v!)),
+
+          _buildMultiSelect('TURNO', _listaTurnos, _turnosSel, (sel) => setState(() => _turnosSel = sel)),
+          _buildMultiSelect('SUPERVISOR', _listaSupervisores, _supervisoresSel, (sel) => setState(() => _supervisoresSel = sel)),
+          _buildMultiSelect('ÁREA', _listaAreas, _areasSel, (sel) => setState(() => _areasSel = sel)),
+          _buildMultiSelect('ATRIBUIBLE', _listaAtribuibles, _atribuiblesSel, (sel) => setState(() => _atribuiblesSel = sel)),
+          _buildMultiSelect('TIPO MAT.', _listaTipos, _tiposSel, (sel) => setState(() => _tiposSel = sel)),
+          _buildMultiSelect('OPM', _listaOpms, _opmsSel, (sel) => setState(() => _opmsSel = sel)),
+          _buildMultiSelect('CAUSAL', _listaCausales, _causalesSel, (sel) => setState(() => _causalesSel = sel)),
+          _buildMultiSelect('ESCENARIO', _listaEscenarios, _escenariosSel, (sel) => setState(() => _escenariosSel = sel)),
+          _buildMultiSelect('ZONA', _listaZonas, _zonasSel, (sel) => setState(() => _zonasSel = sel)),
 
           ElevatedButton.icon(
             onPressed: _aplicarFiltros,
@@ -624,33 +684,126 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  Widget _buildDropdown(String label, String valor, List<String> items, Function(String?) onChanged) {
+  // 🌟 NUEVO WIDGET PARA FILTROS MULTIPLE SELECCIÓN (CHECKBOX)
+  Widget _buildMultiSelect(String label, List<String> opciones, List<String> seleccionados, Function(List<String>) onChanged) {
+    String textLabel;
+    if (seleccionados.length == opciones.length) {
+      textLabel = 'Todos';
+    } else if (seleccionados.isEmpty) {
+      textLabel = 'Ninguno';
+    } else {
+      textLabel = '${seleccionados.length} selecc.';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
         const SizedBox(height: 3),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: items.contains(valor) ? valor : items.first,
-              isDense: true,
-              style: const TextStyle(fontSize: 11, color: Colors.black87),
-              items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-              onChanged: onChanged,
+        InkWell(
+          onTap: () async {
+            List<String> tempSel = List.from(seleccionados);
+            await showDialog(
+                context: context,
+                builder: (ctx) {
+                  return StatefulBuilder(
+                      builder: (context, setStateSB) {
+                        bool todosSeleccionados = tempSel.length == opciones.length;
+
+                        return AlertDialog(
+                          title: Text('Filtrar $label', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                          contentPadding: const EdgeInsets.only(top: 10),
+                          content: SizedBox(
+                            width: 300,
+                            height: 400,
+                            child: Column(
+                              children: [
+                                CheckboxListTile(
+                                    title: const Text('Seleccionar Todos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                    value: todosSeleccionados,
+                                    activeColor: const Color(0xFFF36F21),
+                                    onChanged: (v) {
+                                      setStateSB(() {
+                                        if (v == true) {
+                                          tempSel = List.from(opciones);
+                                        } else {
+                                          tempSel.clear();
+                                        }
+                                      });
+                                    }
+                                ),
+                                const Divider(height: 1),
+                                Expanded(
+                                  child: ListView.builder(
+                                    itemCount: opciones.length,
+                                    itemBuilder: (context, index) {
+                                      String op = opciones[index];
+                                      bool isSel = tempSel.contains(op);
+                                      return CheckboxListTile(
+                                        dense: true,
+                                        controlAffinity: ListTileControlAffinity.leading,
+                                        activeColor: const Color(0xFFF36F21),
+                                        title: Text(op, style: const TextStyle(fontSize: 11)),
+                                        value: isSel,
+                                        onChanged: (v) {
+                                          setStateSB(() {
+                                            if (v == true) {
+                                              tempSel.add(op);
+                                            } else {
+                                              tempSel.remove(op);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
+                            ),
+                            ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF36F21), foregroundColor: Colors.white),
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  onChanged(tempSel);
+                                },
+                                child: const Text('Aplicar')
+                            )
+                          ],
+                        );
+                      }
+                  );
+                }
+            );
+          },
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 90),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(5),
+              color: Colors.white,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(textLabel, style: const TextStyle(fontSize: 11, color: Colors.black87)),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down, size: 14, color: Colors.grey),
+              ],
             ),
           ),
-        )
+        ),
       ],
     );
   }
 
-  // 🍺 TARJETAS KPI (INCLUYE TARJETA DE HL TOTAL)
   Widget _buildTarjetasKPI() {
     int totalEventos = _reportesFiltrados.length;
     double totalUnidades = 0;
@@ -764,7 +917,99 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA UBICACIÓN CON HL TOTAL
+  // 🌟 NUEVA TABLA: TIPO MATERIAL 2
+  Widget _buildTablaTipoMaterial() {
+    Map<String, int> conteo = {};
+    Map<String, double> hlConteo = {};
+    Map<String, double> costos = {};
+    Map<String, Set<String>> reincidencias = {};
+
+    for (var r in _reportesFiltrados) {
+      String tm = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'SIN DEFINIR';
+      int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
+      double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
+      double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
+
+      conteo[tm] = (conteo[tm] ?? 0) + cant;
+      hlConteo[tm] = (hlConteo[tm] ?? 0) + hlVal;
+      costos[tm] = (costos[tm] ?? 0) + costo;
+      reincidencias.putIfAbsent(tm, () => {}).add(r['id']?.toString() ?? '');
+    }
+
+    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
+    return _buildCardTabla(
+      titulo: 'Roturas por Tipo Material',
+      columnas: const ['TIPO MATERIAL', 'CANTIDAD', 'TOTAL HL', 'REINCID.', 'VALOR TOTAL'],
+      columnWidths: const {
+        0: FlexColumnWidth(2.0),
+        1: FlexColumnWidth(1.0),
+        2: FlexColumnWidth(1.2),
+        3: FlexColumnWidth(0.9),
+        4: FlexColumnWidth(1.4),
+      },
+      filas: ordenados.map((e) {
+        double val = costos[e.key] ?? 0;
+        int rein = reincidencias[e.key]?.length ?? 1;
+        double hlTm = hlConteo[e.key] ?? 0.0;
+
+        return [
+          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+          Text(hlTm.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
+          Text('$rein', style: const TextStyle(fontSize: 10)),
+          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
+        ];
+      }).toList(),
+    );
+  }
+
+  // 🌟 NUEVA TABLA: ZONA
+  Widget _buildTablaZona() {
+    Map<String, int> conteo = {};
+    Map<String, double> hlConteo = {};
+    Map<String, Set<String>> reincidencias = {};
+    double totalGeneral = 0;
+
+    for (var r in _reportesFiltrados) {
+      String z = r['zona']?.toString() ?? 'Sin Zona';
+      int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
+      double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
+
+      conteo[z] = (conteo[z] ?? 0) + cant;
+      hlConteo[z] = (hlConteo[z] ?? 0) + hlVal;
+      totalGeneral += cant;
+      reincidencias.putIfAbsent(z, () => {}).add(r['id']?.toString() ?? '');
+    }
+
+    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
+    return _buildCardTabla(
+      titulo: 'Roturas por Zona',
+      columnas: const ['ZONA', 'CANTIDAD', 'TOTAL HL', 'REINCID.', '% TOTAL'],
+      columnWidths: const {
+        0: FlexColumnWidth(2.0),
+        1: FlexColumnWidth(1.0),
+        2: FlexColumnWidth(1.2),
+        3: FlexColumnWidth(0.9),
+        4: FlexColumnWidth(1.0),
+      },
+      filas: ordenados.map((e) {
+        double pct = totalGeneral > 0 ? (e.value / totalGeneral) * 100 : 0;
+        int rein = (reincidencias[e.key]?.length ?? 1);
+        double totalHlLoc = hlConteo[e.key] ?? 0.0;
+
+        return [
+          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+          Text(totalHlLoc.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
+          Text('$rein', style: const TextStyle(fontSize: 10)),
+          Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
+        ];
+      }).toList(),
+    );
+  }
+
   Widget _buildTablaUbicacion() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -810,7 +1055,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA OPM CON HL TOTAL
   Widget _buildTablaOpmDinero() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -857,7 +1101,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA TOP SKUS CON HL TOTAL
   Widget _buildTablaTopSkus() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -904,7 +1147,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA ESCENARIO CON HL TOTAL
   Widget _buildTablaEscenario() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -953,7 +1195,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA SUPERVISOR CON HL TOTAL
   Widget _buildTablaSupervisor() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -1000,7 +1241,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA TURNO CON HL TOTAL
   Widget _buildTablaTurno() {
     Map<String, int> conteo = {};
     Map<String, double> hlConteo = {};
@@ -1068,7 +1308,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🍺 TABLA DETALLE COMPLETO CON HL TOTAL
   Widget _buildTablaDetalleCompleto() {
     return _buildCardBase(
       titulo: 'Detalle Completo Roturas',
@@ -1103,7 +1342,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
               4: FlexColumnWidth(1.2),
               5: FlexColumnWidth(1.2),
               6: FlexColumnWidth(0.8),
-              7: FlexColumnWidth(0.9), // 🍺 Columna HL Total
+              7: FlexColumnWidth(0.9),
               8: FlexColumnWidth(1.6),
               9: FlexColumnWidth(2.8),
               10: FlexColumnWidth(1.2),
@@ -1135,11 +1374,9 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                   _headerCell('EVIDENCIAS'),
                 ],
               ),
-
               ..._reportesFiltrados.take(100).map((r) {
                 String rawF = r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString() ?? '';
                 String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
-
                 String supervisor = r['supervisor']?.toString() ?? 'N/A';
                 String personal = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
                 String zona = r['zona']?.toString() ?? 'N/A';
@@ -1320,8 +1557,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                     .map((c) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(c, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.grey)),
-                ))
-                    .toList(),
+                )).toList(),
               ),
               ...filas.map((f) => TableRow(
                 decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5)))),
@@ -1329,8 +1565,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                     .map((w) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: w,
-                ))
-                    .toList(),
+                )).toList(),
               )),
             ],
           ),
@@ -1347,12 +1582,12 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         child: SingleChildScrollView(
           child: Table(
             columnWidths: const {
-              0: FlexColumnWidth(1.1), // FECHA
-              1: FlexColumnWidth(1.4), // PERSONAL
-              2: FlexColumnWidth(0.8), // CANT / REINCIDENCIAS
-              3: FlexColumnWidth(0.9), // HL TOTAL
-              4: FlexColumnWidth(1.7), // ACCIÓN
-              5: FlexColumnWidth(0.9), // EVIDENCIA
+              0: FlexColumnWidth(1.1),
+              1: FlexColumnWidth(1.4),
+              2: FlexColumnWidth(0.8),
+              3: FlexColumnWidth(0.9),
+              4: FlexColumnWidth(1.7),
+              5: FlexColumnWidth(0.9),
             },
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
             children: [
