@@ -7,35 +7,75 @@ class ApiService {
   static const String baseUrl = 'https://plantatocancipa.site/api/v1';
   static const String database = 'db_logistica';
   static const String apiKey = 'PlantaLogistica2026*';
+  static const String defaultSchema = 'sorting';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
     'x-api-key': apiKey,
   };
 
-  // 🟢 CONSULTAR
+  // 🟢 CONSULTAR (Parámetros Posicionales)
   static Future<List<dynamic>> consultar(String esquema, String tabla) async {
-    final url = Uri.parse('$baseUrl/$database/consultar/$esquema/$tabla');
-    final response = await http.get(url, headers: _headers);
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data'];
-    } else {
-      throw Exception('Error de API: ${response.body}');
+    return consultarTabla(esquema: esquema, tabla: tabla);
+  }
+
+  // 🟢 CONSULTAR TABLA (Parámetros Nombrados)
+  static Future<List<dynamic>> consultarTabla({String? esquema, required String tabla}) async {
+    final schemaStr = esquema ?? defaultSchema;
+    final url = Uri.parse('$baseUrl/$database/consultar/$schemaStr/$tabla');
+    try {
+      final response = await http.get(url, headers: _headers);
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['exito'] == true && body['data'] != null) {
+          return body['data'];
+        } else if (body is Map && body['data'] != null) {
+          return body['data'];
+        } else if (body is List) {
+          return body;
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
     }
   }
 
-  // 🔵 INSERTAR
+  // 🔵 INSERTAR (Parámetros Posicionales)
   static Future<Map<String, dynamic>> insertar(String esquema, String tabla, Map<String, dynamic> datos) async {
     final url = Uri.parse('$baseUrl/$database/insertar/$esquema/$tabla');
     final response = await http.post(url, headers: _headers, body: jsonEncode(datos));
-    if (response.statusCode == 201) {
-      return jsonDecode(response.body)['data'];
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      return body['data'] ?? {};
     } else {
       throw Exception('Error guardando datos: ${response.body}');
     }
   }
 
-  // 🔴 ELIMINAR
+  // 🔵 INSERTAR TABLA (Parámetros Nombrados)
+  static Future<bool> insertarTabla({
+    String? esquema,
+    required String tabla,
+    required Map<String, dynamic> datos,
+  }) async {
+    final schemaStr = esquema ?? defaultSchema;
+    final url = Uri.parse('$baseUrl/$database/insertar/$schemaStr/$tabla');
+    final datosLimpios = Map<String, dynamic>.from(datos)..removeWhere((key, value) => value == null);
+
+    try {
+      final response = await http.post(url, headers: _headers, body: jsonEncode(datosLimpios));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final resJson = jsonDecode(response.body);
+        return resJson['exito'] == true || resJson['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 🔴 ELIMINAR (Parámetros Posicionales)
   static Future<bool> eliminar(String esquema, String tabla, String idColumna, dynamic idValor) async {
     final url = Uri.parse('$baseUrl/$database/eliminar/$esquema/$tabla/$idColumna/$idValor');
     final response = await http.delete(url, headers: _headers);
@@ -43,6 +83,22 @@ class ApiService {
       return true;
     } else {
       throw Exception('Error al eliminar: ${response.body}');
+    }
+  }
+
+  // 🔴 ELIMINAR TABLA (Parámetros Nombrados)
+  static Future<bool> eliminarTabla({
+    String? esquema,
+    required String tabla,
+    required dynamic id,
+  }) async {
+    final schemaStr = esquema ?? defaultSchema;
+    final url = Uri.parse('$baseUrl/$database/borrar/$schemaStr/$tabla/$id');
+    try {
+      final response = await http.delete(url, headers: _headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 

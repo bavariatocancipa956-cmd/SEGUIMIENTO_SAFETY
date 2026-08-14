@@ -4,9 +4,16 @@ import 'reporte_hora_hora_screen.dart';
 import 'dashboard_estibas_screen.dart';
 import 'estibas_entregadas_screen.dart';
 import 'inventario_estibas_screen.dart';
+import 'dashboard_sorting_screen.dart';
+import 'dashboard_ai_screen.dart';
+import 'dashboard_fms_screen.dart';
+import 'fms_areas_screen.dart';
+import 'fms_metas_screen.dart';
 
 class PantallaPrincipal extends StatefulWidget {
-  const PantallaPrincipal({super.key});
+  final Map<String, dynamic>? datosUsuario;
+
+  const PantallaPrincipal({super.key, this.datosUsuario});
 
   @override
   State<PantallaPrincipal> createState() => _PantallaPrincipalState();
@@ -15,14 +22,18 @@ class PantallaPrincipal extends StatefulWidget {
 class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTickerProviderStateMixin {
   // Estados para los menús desplegables
   bool _menuSeguridadExpandido = true;
-  bool _menuFmsExpandido = false;
+  bool _menuFmsExpandido = true;
   bool _menuRoturaExpandido = false;
+
   bool _menuReprocesosExpandido = true;
+  bool _menuEstibasExpandido = true;
+
+  bool _menuControlesExpandido = true;
 
   bool _mostrarSidebar = true;
 
-  // Vista inicial predeterminada
-  String _vistaActual = 'INVENTARIO_ESTIBAS';
+  // Vista inicial
+  String _vistaActual = 'DASHBOARD_AI';
 
   void _toggleSidebar() {
     setState(() {
@@ -60,6 +71,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
 
   Widget _obtenerVistaActual() {
     switch (_vistaActual) {
+      case 'SORTING':
+        return DashboardSortingScreen(onToggleSidebar: _toggleSidebar);
       case 'ROTURA_DASHBOARD':
         return DashboardRoturasScreen(onToggleSidebar: _toggleSidebar);
       case 'ROTURA_HORA_HORA':
@@ -70,7 +83,23 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
         return const EstibasEntregadasScreen();
       case 'INVENTARIO_ESTIBAS':
         return const InventarioEstibasScreen();
+
+      case 'DASHBOARD_AI':
+        return DashboardAiScreen(
+          datosEmpleado: widget.datosUsuario,
+          onToggleSidebar: _toggleSidebar,
+        );
+
+    // --- MÓDULOS FMS ---
       case 'DASHBOARD_FMS':
+        return DashboardFmsScreen(onToggleSidebar: _toggleSidebar);
+
+      case 'FMS_AREAS':
+        return DashboardFmsAreasScreen(onToggleSidebar: _toggleSidebar);
+
+      case 'METAS_FMS':
+        return FmsMetasScreen(onToggleSidebar: _toggleSidebar);
+
       case 'GESTION_FMS':
       case 'DASHBOARD_RAYONES':
       case 'GESTION_RAYONES':
@@ -91,12 +120,15 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
 
   String _obtenerTituloHeader() {
     switch (_vistaActual) {
+      case 'SORTING': return 'PLANTA TOCANCIPÁ - DASHBOARD SORTING';
       case 'ROTURA_DASHBOARD': return 'PLANTA TOCANCIPÁ - DASHBOARD ROTURAS';
       case 'ROTURA_HORA_HORA': return 'PLANTA TOCANCIPÁ - REPORTE HORA A HORA';
       case 'REPROCESOS_ESTIBAS': return 'PLANTA TOCANCIPÁ - REPARACIÓN DE ESTIBAS';
       case 'ENTREGA_ESTIBAS': return 'PLANTA TOCANCIPÁ - ENTREGA DE ESTIBAS';
       case 'INVENTARIO_ESTIBAS': return 'PLANTA TOCANCIPÁ - INVENTARIO DE ESTIBAS';
       case 'DASHBOARD_FMS': return 'PLANTA TOCANCIPÁ - DASHBOARD FMS';
+      case 'FMS_AREAS': return 'PLANTA TOCANCIPÁ - FMS ÁREAS';
+      case 'METAS_FMS': return 'PLANTA TOCANCIPÁ - CUMPLIMIENTO METAS FMS';
       case 'GESTION_FMS': return 'PLANTA TOCANCIPÁ - GESTIÓN FMS';
       case 'DASHBOARD_RAYONES': return 'PLANTA TOCANCIPÁ - DASHBOARD RAYONES';
       case 'GESTION_RAYONES': return 'PLANTA TOCANCIPÁ - GESTIÓN RAYONES';
@@ -104,6 +136,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'RUTINA_SAFETY': return 'PLANTA TOCANCIPÁ - RUTINA SAFETY';
       case 'DTOS': return 'PLANTA TOCANCIPÁ - CONTROL DTO';
       case 'CONTROL_VAS': return 'PLANTA TOCANCIPÁ - CONTROL VAS';
+      case 'DASHBOARD_AI': return 'PLANTA TOCANCIPÁ - DASHBOARD REVISIÓN AI';
+
       default: return 'OPERACIÓN TOCANCIPÁ';
     }
   }
@@ -143,18 +177,38 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             expandido: _menuSeguridadExpandido,
             onTap: () => setState(() => _menuSeguridadExpandido = !_menuSeguridadExpandido),
             submenus: [
-              // SUBGRUPO FMS (Nivel 2)
+              // SUBGRUPO FMS DENTRO DE SEGURIDAD
               _buildSubGrupoExpandible(
-                titulo: 'MÓDULO FMS',
+                titulo: 'FMS',
                 expandido: _menuFmsExpandido,
                 onTap: () => setState(() => _menuFmsExpandido = !_menuFmsExpandido),
                 submenus: [
-                  _buildOpcionSubmenu(titulo: 'Dashboard FMS', idVista: 'DASHBOARD_FMS', icono: Icons.pie_chart_rounded, nivel: 3),
-                  _buildOpcionSubmenu(titulo: 'Gestión FMS', idVista: 'GESTION_FMS', icono: Icons.list_alt_rounded, nivel: 3),
+                  _buildOpcionSubmenu(
+                    titulo: 'Dashboard FMS',
+                    idVista: 'DASHBOARD_FMS',
+                    icono: Icons.pie_chart_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'FMS Áreas',
+                    idVista: 'FMS_AREAS',
+                    icono: Icons.grid_view_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'Metas FMS',
+                    idVista: 'METAS_FMS',
+                    icono: Icons.fact_check_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'Gestión FMS',
+                    idVista: 'GESTION_FMS',
+                    icono: Icons.list_alt_rounded,
+                    nivel: 3,
+                  ),
                 ],
               ),
-
-              // SUBGRUPO ROTURA (Nivel 2)
               _buildSubGrupoExpandible(
                 titulo: 'ROTURA',
                 expandido: _menuRoturaExpandido,
@@ -164,7 +218,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                   _buildOpcionSubmenu(titulo: 'Reporte Hora a Hora', idVista: 'ROTURA_HORA_HORA', icono: Icons.access_time_rounded, nivel: 3),
                 ],
               ),
-
               _buildOpcionSubmenu(titulo: 'Rutina Safety General', idVista: 'RUTINA_SAFETY', icono: Icons.security_rounded),
               _buildOpcionSubmenu(titulo: 'Dashboard Rayones', idVista: 'DASHBOARD_RAYONES', icono: Icons.show_chart_rounded),
               _buildOpcionSubmenu(titulo: 'Gestión Rayones', idVista: 'GESTION_RAYONES', icono: Icons.assignment_rounded),
@@ -180,9 +233,27 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             expandido: _menuReprocesosExpandido,
             onTap: () => setState(() => _menuReprocesosExpandido = !_menuReprocesosExpandido),
             submenus: [
-              _buildOpcionSubmenu(titulo: 'Reparación de Estibas', idVista: 'REPROCESOS_ESTIBAS', icono: Icons.bar_chart_rounded),
-              _buildOpcionSubmenu(titulo: 'Entrega de Estibas', idVista: 'ENTREGA_ESTIBAS', icono: Icons.local_shipping_outlined),
-              _buildOpcionSubmenu(titulo: 'Inventario Estibas', idVista: 'INVENTARIO_ESTIBAS', icono: Icons.inventory_rounded),
+              _buildSubGrupoExpandible(
+                titulo: 'ESTIBAS',
+                expandido: _menuEstibasExpandido,
+                onTap: () => setState(() => _menuEstibasExpandido = !_menuEstibasExpandido),
+                submenus: [
+                  _buildOpcionSubmenu(titulo: 'Reparación de Estibas', idVista: 'REPROCESOS_ESTIBAS', icono: Icons.bar_chart_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'Entrega de Estibas', idVista: 'ENTREGA_ESTIBAS', icono: Icons.local_shipping_outlined, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'Inventario Estibas', idVista: 'INVENTARIO_ESTIBAS', icono: Icons.inventory_rounded, nivel: 3),
+                ],
+              ),
+            ],
+          ),
+
+          // 3. MÓDULO CONTROLES
+          _buildGrupoExpandible(
+            titulo: 'CONTROLES',
+            expandido: _menuControlesExpandido,
+            onTap: () => setState(() => _menuControlesExpandido = !_menuControlesExpandido),
+            submenus: [
+              _buildOpcionSubmenu(titulo: 'Sorting', idVista: 'SORTING', icono: Icons.sort_rounded, nivel: 2),
+              _buildOpcionSubmenu(titulo: 'Dashboard Revisión AI', idVista: 'DASHBOARD_AI', icono: Icons.analytics_outlined, nivel: 2),
             ],
           ),
         ],
@@ -193,8 +264,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
   // ---------------------------------------------------------------------------
   // ⚡ COMPONENTES DE MENÚ FLUIDOS
   // ---------------------------------------------------------------------------
-
-  // Nivel 1 (SEGURIDAD, REPROCESOS)
   Widget _buildGrupoExpandible({
     required String titulo,
     required bool expandido,
@@ -248,7 +317,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
     );
   }
 
-  // Nivel 2 (Submenú anidado: ROTURA, FMS)
   Widget _buildSubGrupoExpandible({
     required String titulo,
     required bool expandido,
@@ -301,15 +369,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
     );
   }
 
-  // Opciones Clickables (Sirve para nivel 2 normal y nivel 3)
   Widget _buildOpcionSubmenu({
     required String titulo,
     required String idVista,
     required IconData icono,
-    int nivel = 2
+    int nivel = 2,
   }) {
     bool activo = _vistaActual == idVista;
-
     double margenIzquierdo = nivel == 3 ? 24.0 : 10.0;
 
     return Padding(

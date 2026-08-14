@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'api_service.dart'; // Asegúrate de que la ruta sea correcta según tu proyecto
+import 'api_service.dart';
 
 class DashboardEstibasScreen extends StatefulWidget {
   final VoidCallback? onToggleSidebar;
@@ -29,7 +29,7 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
   final List<String> _listaTurnos = ['Todos', 'T1', 'T2', 'T3'];
   List<String> _listaSupervisores = ['Todos'];
 
-  // KPIs
+  // KPIs principales
   int _totalA = 0;
   int _totalRep = 0;
   int _totalC = 0;
@@ -125,12 +125,20 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     _totalMeta = 0;
 
     for (var row in _registrosFiltrados) {
-      _totalA += _pInt(row['clasificadas'] ?? row['tipo_a']);
-      _totalRep += _pInt(row['reparadas']);
-      _totalC += _pInt(row['tipo_c']);
+      String causal = (row['causal'] ?? row['causal_tipo_c'] ?? '').toString().toLowerCase();
 
-      int metaRow = _pInt(row['meta']);
-      _totalMeta += metaRow > 0 ? metaRow : 0;
+      // Excluye tablillas de los KPIs generales
+      if (causal.contains('tablilla')) continue;
+
+      int a = _pInt(row['clasificadas'] ?? row['tipo_a']);
+      int rep = _pInt(row['reparadas']);
+      int c = _pInt(row['tipo_c']);
+      int meta = _pInt(row['meta']);
+
+      _totalA += a;
+      _totalRep += rep;
+      _totalC += c;
+      _totalMeta += meta > 0 ? meta : 0;
     }
 
     int produccion = _totalA + _totalRep;
@@ -147,7 +155,10 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
   @override
   Widget build(BuildContext context) {
     if (_cargando) {
-      return const Scaffold(backgroundColor: Color(0xFFF4F6F9), body: Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6))));
+      return const Scaffold(
+        backgroundColor: Color(0xFFF4F6F9),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6))),
+      );
     }
 
     return Scaffold(
@@ -219,7 +230,18 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 📋 DETALLE COMPLETO
+            // 🪵 RESUMEN TABLILLA Y PRODUCTIVIDAD OPM (AMBAS EN LA MISMA FILA)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _buildResumenTablilla()),
+                const SizedBox(width: 20),
+                Expanded(child: _buildProductividadOpm()),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // 📋 DETALLE COMPLETO (Encabezados fijos y sin columna supervisor)
             _buildDetalleCompleto(),
             const SizedBox(height: 40),
           ],
@@ -232,7 +254,11 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
   Widget _buildBarraFiltros() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -284,7 +310,12 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
         const SizedBox(height: 6),
         InkWell(
           onTap: () async {
-            final p = await showDatePicker(context: context, initialDate: fecha, firstDate: DateTime(2020), lastDate: DateTime(2100));
+            final p = await showDatePicker(
+              context: context,
+              initialDate: fecha,
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2100),
+            );
             if (p != null) onSelect(p);
           },
           child: Container(
@@ -327,28 +358,28 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     );
   }
 
-  // 2️⃣ TARJETAS KPI (Números aumentados a 34)
+  // 2️⃣ TARJETAS KPI (5 Tarjetas)
   Widget _buildTarjetasKPI() {
     Color colorProd = _prodGlobal >= 100 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
     return Row(
       children: [
-        Expanded(child: _buildKPICard('CLASIFICADAS', '$_totalA', const Color(0xFF3B82F6), Colors.black87)),
-        const SizedBox(width: 15),
-        Expanded(child: _buildKPICard('REPARADAS', '$_totalRep', const Color(0xFF3B82F6), Colors.black87)),
-        const SizedBox(width: 15),
+        Expanded(child: _buildKPICard('CLASIF.', '$_totalA', const Color(0xFF3B82F6), Colors.black87)),
+        const SizedBox(width: 10),
+        Expanded(child: _buildKPICard('REP.', '$_totalRep', const Color(0xFF3B82F6), Colors.black87)),
+        const SizedBox(width: 10),
         Expanded(child: _buildKPICard('TIPO C', '$_totalC', const Color(0xFFF59E0B), Colors.black87)),
-        const SizedBox(width: 15),
+        const SizedBox(width: 10),
         Expanded(child: _buildKPICard('META', '$_totalMeta', const Color(0xFFF59E0B), Colors.black87)),
-        const SizedBox(width: 15),
-        Expanded(child: _buildKPICard('PRODUCTIVIDAD', '${_prodGlobal.toStringAsFixed(1)}%', colorProd, colorProd)),
+        const SizedBox(width: 10),
+        Expanded(child: _buildKPICard('PROD.', '${_prodGlobal.toStringAsFixed(1)}%', colorProd, colorProd)),
       ],
     );
   }
 
   Widget _buildKPICard(String titulo, String valor, Color colorBorde, Color colorTexto) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -358,16 +389,15 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
       child: Row(
         children: [
           Container(width: 5, height: 50, decoration: BoxDecoration(color: colorBorde, borderRadius: BorderRadius.circular(10))),
-          const SizedBox(width: 15),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               children: [
-                Text(titulo, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF78909C), letterSpacing: 0.5), textAlign: TextAlign.center),
+                Text(titulo, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF78909C), letterSpacing: 0.5), textAlign: TextAlign.center, maxLines: 1),
                 const SizedBox(height: 8),
                 FittedBox(
                   fit: BoxFit.scaleDown,
-                  // TAMAÑO AUMENTADO AQUI (34)
-                  child: Text(valor, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: colorTexto)),
+                  child: Text(valor, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: colorTexto)),
                 ),
               ],
             ),
@@ -425,6 +455,9 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     Map<String, Map<String, dynamic>> resumen = {};
 
     for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
       String t = r['turno']?.toString().trim().toUpperCase() ?? 'N/A';
       if (t.isEmpty) t = 'N/A';
 
@@ -433,13 +466,31 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
       int c = _pInt(r['tipo_c']);
       int meta = _pInt(r['meta']);
 
+      String op = (r['operario'] ?? r['nombre'] ?? '').toString().toUpperCase().trim();
+
+      bool esAusente = causal.contains('ausent') ||
+          causal.contains('falta') ||
+          causal.contains('incapacidad') ||
+          causal.contains('permiso');
+
       if (!resumen.containsKey(t)) {
-        resumen[t] = {'a': 0, 'rep': 0, 'c': 0, 'meta': 0};
+        resumen[t] = {
+          'a': 0,
+          'rep': 0,
+          'c': 0,
+          'meta': 0,
+          'operarios': <String>{},
+        };
       }
+
       resumen[t]!['a'] += a;
       resumen[t]!['rep'] += rep;
       resumen[t]!['c'] += c;
       resumen[t]!['meta'] += meta > 0 ? meta : 0;
+
+      if (op.isNotEmpty && !esAusente) {
+        (resumen[t]!['operarios'] as Set<String>).add(op);
+      }
     }
 
     var ordenados = resumen.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
@@ -448,28 +499,34 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
       titulo: 'Resumen por Turno',
       child: Table(
         columnWidths: const {
-          0: FlexColumnWidth(1.0),
-          1: FlexColumnWidth(1.4),
-          2: FlexColumnWidth(1.2),
-          3: FlexColumnWidth(1.0),
-          4: FlexColumnWidth(1.5),
+          0: FlexColumnWidth(0.9), // TURNO
+          1: FlexColumnWidth(1.1), // PERS.
+          2: FlexColumnWidth(1.0), // META
+          3: FlexColumnWidth(1.2), // CLASIF.
+          4: FlexColumnWidth(1.1), // REPAR.
+          5: FlexColumnWidth(0.9), // TIPO C
+          6: FlexColumnWidth(1.3), // PROD.
         },
         children: [
           const TableRow(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 2))),
             children: [
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TURNO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('CLASIFICADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('REPARADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TIPO C', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PRODUCTIVIDAD', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TURNO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PERS.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('META', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('CLASIF.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('REPAR.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TIPO C', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PROD.', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
             ],
           ),
           ...ordenados.map((e) {
+            int cantPers = (e.value['operarios'] as Set<String>).length;
+            int meta = e.value['meta'];
             int a = e.value['a'];
             int rep = e.value['rep'];
             int c = e.value['c'];
-            int meta = e.value['meta'];
+
             double pct = meta > 0 ? ((a + rep) / meta) * 100 : 0.0;
             Color colorPct = pct >= 100 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
@@ -481,16 +538,18 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)),
-                      child: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF475569))),
+                      child: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569))),
                     ),
                   ),
                 ),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$a', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$rep', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$c', textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('${pct.toStringAsFixed(1)}%', textAlign: TextAlign.right, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorPct))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$cantPers', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$meta', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$a', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$rep', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$c', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('${pct.toStringAsFixed(1)}%', textAlign: TextAlign.right, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorPct))),
               ],
             );
           }),
@@ -504,6 +563,9 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     Map<String, int> metaSup = {};
     Map<String, int> realSup = {};
     for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
       String s = (r['supervisor']?.toString() ?? 'SIN ASIGNAR').toUpperCase().trim();
       realSup[s] = (realSup[s] ?? 0) + _pInt(r['clasificadas'] ?? r['tipo_a']) + _pInt(r['reparadas']);
       int m = _pInt(r['meta']);
@@ -532,6 +594,9 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
   Widget _buildCausalesDonut() {
     Map<String, double> mapa = {};
     for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
       String c = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().trim().toUpperCase();
       int tc = _pInt(r['tipo_c']);
 
@@ -557,6 +622,9 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     Map<String, Map<String, dynamic>> ops = {};
 
     for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
       String op = (r['operario']?.toString() ?? 'DESCONOCIDO').toUpperCase().trim();
       int rep = _pInt(r['reparadas']);
       int meta = _pInt(r['meta']);
@@ -614,85 +682,302 @@ class _DashboardEstibasScreenState extends State<DashboardEstibasScreen> {
     );
   }
 
-  // 8️⃣ DETALLE COMPLETO
-  Widget _buildDetalleCompleto() {
+  // 8️⃣ TABLA RESUMEN SEPARANDO TABLILLA
+  Widget _buildResumenTablilla() {
+    Map<String, Map<String, dynamic>> mapTablilla = {};
+
+    for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+
+      if (causal.contains('tablilla')) {
+        String op = (r['operario']?.toString() ?? 'DESCONOCIDO').toUpperCase().trim();
+        String fecha = (r['fecha']?.toString() ?? '').split('T')[0];
+        int c = _pInt(r['tipo_c']);
+        int a = _pInt(r['clasificadas'] ?? r['tipo_a']);
+        int rep = _pInt(r['reparadas']);
+
+        if (!mapTablilla.containsKey(op)) {
+          mapTablilla[op] = {
+            'dias': <String>{},
+            'tipo_c': 0,
+            'total_piezas': 0,
+          };
+        }
+
+        if (fecha.isNotEmpty) {
+          (mapTablilla[op]!['dias'] as Set<String>).add(fecha);
+        }
+        mapTablilla[op]!['tipo_c'] += c;
+        mapTablilla[op]!['total_piezas'] += (a + rep + c);
+      }
+    }
+
+    var listaTablilla = mapTablilla.entries.toList()
+      ..sort((a, b) => (b.value['tipo_c'] as int).compareTo(a.value['tipo_c'] as int));
+
+    if (listaTablilla.isEmpty) {
+      return _buildCardTabla(
+        titulo: 'Resumen - Separando Tablilla',
+        height: 320,
+        child: const Center(
+          child: Text(
+            'No hay registros de personas separando tablilla.',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
     return _buildCardTabla(
-      titulo: 'Detalle Completo',
-      height: 450,
+      titulo: 'Resumen - Separando Tablilla',
+      height: 320,
       child: Table(
         columnWidths: const {
-          0: FlexColumnWidth(1.1), // FECHA
-          1: FlexColumnWidth(2.0), // OPERARIO
-          2: FlexColumnWidth(1.5), // SUPERVISOR
-          3: FlexColumnWidth(1.2), // CAUSAL
-          4: FlexColumnWidth(0.8), // TURNO
-          5: FlexColumnWidth(1.3), // CLASIFICADAS
-          6: FlexColumnWidth(1.1), // REPARADAS
-          7: FlexColumnWidth(1.0), // TIPO C
-          8: FlexColumnWidth(1.0), // META
-          9: FlexColumnWidth(1.4), // PRODUCTIVIDAD
+          0: FlexColumnWidth(2.2), // OPERARIO
+          1: FlexColumnWidth(1.2), // DÍAS
+          2: FlexColumnWidth(1.3), // BAJAS (C)
+          3: FlexColumnWidth(1.3), // TOTAL
         },
         children: [
           const TableRow(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 2))),
             children: [
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('FECHA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
               Padding(padding: EdgeInsets.only(bottom: 12), child: Text('OPERARIO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('SUPERVISOR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('CAUSAL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TURNO', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('CLASIFICADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('REPARADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TIPO C', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('META', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
-              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PRODUCTIVIDAD', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('DÍAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('BAJA (C)', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('TOTAL', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
             ],
           ),
-          ..._registrosFiltrados.take(150).map((r) {
-            String fecha = (r['fecha']?.toString() ?? '').split('T')[0];
-            String op = (r['operario']?.toString() ?? 'DESCONOCIDO').toUpperCase();
-            String supRaw = (r['supervisor']?.toString() ?? 'SIN ASIGNAR').toUpperCase();
-
-            String causal = r['causal']?.toString() ?? r['causal_tipo_c']?.toString() ?? 'Ninguna';
-            if (causal.trim().isEmpty || causal.toUpperCase() == 'NULL') causal = 'Ninguna';
-            String turno = r['turno']?.toString().toUpperCase() ?? 'T1';
-
-            int a = _pInt(r['clasificadas'] ?? r['tipo_a']);
-            int rep = _pInt(r['reparadas']);
-            int c = _pInt(r['tipo_c']);
-            int meta = _pInt(r['meta']);
-
-            double prodPct = meta > 0 ? ((a + rep) / meta) * 100 : 0.0;
-            Color colorProd = prodPct >= 100 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
-
-            String supervisorLabel = prodPct >= 100 ? supRaw : '---';
+          ...listaTablilla.map((e) {
+            int cantDias = (e.value['dias'] as Set<String>).length;
+            int estibasBaja = e.value['tipo_c'];
+            int totalTablillas = e.value['total_piezas'];
 
             return TableRow(
               decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF8FAFC)))),
               children: [
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(fecha, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(op, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(supervisorLabel, style: TextStyle(fontSize: 12, fontWeight: prodPct >= 100 ? FontWeight.bold : FontWeight.normal, color: prodPct >= 100 ? const Color(0xFF2563EB) : Colors.grey))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(causal, style: const TextStyle(fontSize: 13, color: Colors.grey))),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: Align(
-                    alignment: Alignment.center,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)),
-                      child: Text(turno, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569))),
-                    ),
-                  ),
-                ),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$a', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$rep', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$c', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$meta', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('${prodPct.toStringAsFixed(1)}%', textAlign: TextAlign.right, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorProd))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(e.key, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('$cantDias d', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2563EB)))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('$estibasBaja', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFF59E0B)))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('$totalTablillas', textAlign: TextAlign.right, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF10B981)))),
               ],
             );
           }),
+        ],
+      ),
+    );
+  }
+
+  // 9️⃣ PRODUCTIVIDAD POR OPM (VS PROMEDIO GRUPO) - UBICADA A LA DERECHA DE TABLILLA
+  Widget _buildProductividadOpm() {
+    Map<String, Map<String, dynamic>> opmMap = {};
+
+    for (var r in _registrosFiltrados) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
+      // 🔥 EXTRAE DIRECTAMENTE LA COLUMNA `opm`
+      String opm = (r['opm'] ?? r['origen_opm'] ?? '').toString().toUpperCase().trim();
+      if (opm.isEmpty || opm == 'NULL' || opm == 'N/A') continue;
+
+      int a = _pInt(r['clasificadas'] ?? r['tipo_a']);
+      int rep = _pInt(r['reparadas']);
+      int meta = _pInt(r['meta']);
+
+      if (!opmMap.containsKey(opm)) {
+        opmMap[opm] = {'prod': 0, 'meta': 0};
+      }
+
+      opmMap[opm]!['prod'] += (a + rep);
+      opmMap[opm]!['meta'] += (meta > 0 ? meta : 0);
+    }
+
+    if (opmMap.isEmpty) {
+      return _buildCardTabla(
+        titulo: 'Productividad por OPM',
+        height: 320,
+        child: const Center(
+          child: Text(
+            'No hay registros de OPM en el rango seleccionado.',
+            style: TextStyle(fontSize: 13, color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    double promedioGrupo = _prodGlobal;
+
+    var ordenados = opmMap.entries.toList()..sort((a, b) {
+      double pctA = a.value['meta'] > 0 ? (a.value['prod'] / a.value['meta']) * 100 : 0.0;
+      double pctB = b.value['meta'] > 0 ? (b.value['prod'] / b.value['meta']) * 100 : 0.0;
+      return pctB.compareTo(pctA);
+    });
+
+    return _buildCardTabla(
+      titulo: 'Productividad por OPM (Prom. Grupo: ${promedioGrupo.toStringAsFixed(1)}%)',
+      height: 320,
+      child: Table(
+        columnWidths: const {
+          0: FlexColumnWidth(2.2), // OPM
+          1: FlexColumnWidth(1.1), // PROD
+          2: FlexColumnWidth(1.1), // META
+          3: FlexColumnWidth(1.2), // PROD %
+          4: FlexColumnWidth(1.4), // VS PROM.
+        },
+        children: [
+          const TableRow(
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 2))),
+            children: [
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('OPM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PROD', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('META', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('PROD %', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+              Padding(padding: EdgeInsets.only(bottom: 12), child: Text('VS PROM.', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+            ],
+          ),
+          ...ordenados.map((e) {
+            int prod = e.value['prod'];
+            int meta = e.value['meta'];
+            double pctOPM = meta > 0 ? (prod / meta) * 100 : 0.0;
+            double diffVsGrupo = pctOPM - promedioGrupo;
+
+            Color colorPct = pctOPM >= 100 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+            Color colorDiff = diffVsGrupo >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+            String signDiff = diffVsGrupo >= 0 ? '+' : '';
+
+            return TableRow(
+              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF8FAFC)))),
+              children: [
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(e.key, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('$prod', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('$meta', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text('${pctOPM.toStringAsFixed(1)}%', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorPct))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    '$signDiff${diffVsGrupo.toStringAsFixed(1)}%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorDiff),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // 🔟 DETALLE COMPLETO (Encabezados Fijos + Sin Supervisor)
+  Widget _buildDetalleCompleto() {
+    const colWidths = {
+      0: FlexColumnWidth(1.1), // FECHA
+      1: FlexColumnWidth(2.2), // OPERARIO
+      2: FlexColumnWidth(1.4), // CAUSAL
+      3: FlexColumnWidth(0.8), // TURNO
+      4: FlexColumnWidth(1.3), // CLASIFICADAS
+      5: FlexColumnWidth(1.1), // REPARADAS
+      6: FlexColumnWidth(1.0), // TIPO C
+      7: FlexColumnWidth(1.0), // META
+      8: FlexColumnWidth(1.4), // PRODUCTIVIDAD
+    };
+
+    return Container(
+      height: 450,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('Detalle Completo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          ),
+          const Divider(height: 1, color: Color(0xFFEEEEEE)),
+
+          // 📌 ENCABEZADOS FIJOS
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+            child: Table(
+              columnWidths: colWidths,
+              children: const [
+                TableRow(
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 2))),
+                  children: [
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('FECHA', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('OPERARIO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('CAUSAL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('TURNO', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('CLASIFICADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('REPARADAS', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('TIPO C', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('META', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                    Padding(padding: EdgeInsets.only(bottom: 8), child: Text('PRODUCTIVIDAD', textAlign: TextAlign.right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B)))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 📜 CUERPO CON SCROLL VERTICAL
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Table(
+                columnWidths: colWidths,
+                children: _registrosFiltrados.take(150).map((r) {
+                  String fecha = (r['fecha']?.toString() ?? '').split('T')[0];
+                  String op = (r['operario']?.toString() ?? 'DESCONOCIDO').toUpperCase();
+
+                  String causal = r['causal']?.toString() ?? r['causal_tipo_c']?.toString() ?? 'Ninguna';
+                  if (causal.trim().isEmpty || causal.toUpperCase() == 'NULL') causal = 'Ninguna';
+                  String turno = r['turno']?.toString().toUpperCase() ?? 'T1';
+
+                  int a = _pInt(r['clasificadas'] ?? r['tipo_a']);
+                  int rep = _pInt(r['reparadas']);
+                  int c = _pInt(r['tipo_c']);
+                  int meta = _pInt(r['meta']);
+
+                  bool esTablilla = causal.toLowerCase().contains('tablilla');
+                  double prodPct = 0.0;
+                  if (!esTablilla && meta > 0) {
+                    prodPct = ((a + rep) / meta) * 100;
+                  }
+
+                  String prodStr = esTablilla ? 'N/A' : '${prodPct.toStringAsFixed(1)}%';
+                  Color colorProd = esTablilla ? Colors.grey : (prodPct >= 100 ? const Color(0xFF10B981) : const Color(0xFFEF4444));
+
+                  return TableRow(
+                    decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF8FAFC)))),
+                    children: [
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(fecha, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(op, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(causal, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)),
+                            child: Text(turno, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569))),
+                          ),
+                        ),
+                      ),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$a', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$rep', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$c', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text('$meta', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Text(prodStr, textAlign: TextAlign.right, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorProd))),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -726,7 +1011,14 @@ class EvolucionLineChart extends StatelessWidget {
   final bool isPorcentaje;
   final Color colorLinea;
 
-  const EvolucionLineChart({super.key, required this.reportes, required this.fechaDesde, required this.fechaHasta, required this.isPorcentaje, required this.colorLinea});
+  const EvolucionLineChart({
+    super.key,
+    required this.reportes,
+    required this.fechaDesde,
+    required this.fechaHasta,
+    required this.isPorcentaje,
+    required this.colorLinea,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -734,6 +1026,9 @@ class EvolucionLineChart extends StatelessWidget {
     Map<int, double> conteoMeta = {};
 
     for (var r in reportes) {
+      String causal = (r['causal'] ?? r['causal_tipo_c'] ?? '').toString().toLowerCase();
+      if (causal.contains('tablilla')) continue;
+
       String? rawFecha = r['fecha']?.toString();
       if (rawFecha != null && rawFecha.length >= 10) {
         DateTime? dt = DateTime.tryParse(rawFecha.substring(0, 10));
@@ -757,7 +1052,8 @@ class EvolucionLineChart extends StatelessWidget {
 
     for (int i = 0; i < totalDias; i++) {
       DateTime curr = fechaDesde.add(Duration(days: i));
-      labelsX.add('${curr.year}-${curr.month.toString().padLeft(2, '0')}-${curr.day.toString().padLeft(2, '0')}');
+
+      labelsX.add(curr.day.toString().padLeft(2, '0'));
 
       double real = conteoReal[curr.day] ?? 0;
       double meta = conteoMeta[curr.day] ?? 0;
@@ -773,14 +1069,25 @@ class EvolucionLineChart extends StatelessWidget {
     }
 
     if (valores.isEmpty || valores.every((v) => v == 0)) {
-      return const SizedBox(height: 240, child: Center(child: Text('Sin datos en el rango', style: TextStyle(fontSize: 13, color: Colors.grey))));
+      return const SizedBox(
+        height: 240,
+        child: Center(
+          child: Text('Sin datos en el rango', style: TextStyle(fontSize: 13, color: Colors.grey)),
+        ),
+      );
     }
 
     return SizedBox(
       height: 240,
       width: double.infinity,
       child: CustomPaint(
-        painter: _LineChartPainter(labelsX: labelsX, valores: valores, metasCumplidas: llegoAMeta, colorLinea: colorLinea, isPorcentaje: isPorcentaje),
+        painter: _LineChartPainter(
+          labelsX: labelsX,
+          valores: valores,
+          metasCumplidas: llegoAMeta,
+          colorLinea: colorLinea,
+          isPorcentaje: isPorcentaje,
+        ),
       ),
     );
   }
@@ -793,7 +1100,13 @@ class _LineChartPainter extends CustomPainter {
   final Color colorLinea;
   final bool isPorcentaje;
 
-  _LineChartPainter({required this.labelsX, required this.valores, required this.metasCumplidas, required this.colorLinea, required this.isPorcentaje});
+  _LineChartPainter({
+    required this.labelsX,
+    required this.valores,
+    required this.metasCumplidas,
+    required this.colorLinea,
+    required this.isPorcentaje,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -816,7 +1129,10 @@ class _LineChartPainter extends CustomPainter {
       canvas.drawLine(Offset(paddingLeft, y), Offset(size.width, y), gridPaint);
 
       String label = '${(maxVal / 6 * i).toInt()}';
-      TextPainter tp = TextPainter(text: TextSpan(text: label, style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))), textDirection: TextDirection.ltr);
+      TextPainter tp = TextPainter(
+        text: TextSpan(text: label, style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+        textDirection: TextDirection.ltr,
+      );
       tp.layout();
       tp.paint(canvas, Offset(paddingLeft - tp.width - 8, y - 6));
     }
@@ -829,11 +1145,15 @@ class _LineChartPainter extends CustomPainter {
       double y = paddingTop + height - ((valores[i] / maxVal) * height);
       points.add(Offset(x, y));
 
-      if (i == 0 || i == valores.length - 1 || i == valores.length ~/ 2) {
-        TextPainter tp = TextPainter(text: TextSpan(text: labelsX[i], style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))), textDirection: TextDirection.ltr);
-        tp.layout();
-        tp.paint(canvas, Offset(x - (tp.width / 2), paddingTop + height + 10));
-      }
+      TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: labelsX[i],
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      tp.paint(canvas, Offset(x - (tp.width / 2), paddingTop + height + 10));
     }
 
     Path path = Path();
@@ -853,14 +1173,25 @@ class _LineChartPainter extends CustomPainter {
     fillPath.lineTo(points.last.dx, paddingTop + height);
     fillPath.close();
 
-    final fillPaint = Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [colorLinea.withOpacity(0.15), colorLinea.withOpacity(0.00)]).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [colorLinea.withOpacity(0.15), colorLinea.withOpacity(0.00)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawPath(fillPath, fillPaint);
 
-    final linePaint = Paint()..color = colorLinea..strokeWidth = 3.0..style = PaintingStyle.stroke;
+    final linePaint = Paint()
+      ..color = colorLinea
+      ..strokeWidth = 3.0
+      ..style = PaintingStyle.stroke;
     canvas.drawPath(path, linePaint);
 
     final dotPaint = Paint()..color = Colors.white;
-    final dotBorder = Paint()..color = colorLinea..style = PaintingStyle.stroke..strokeWidth = 2.0;
+    final dotBorder = Paint()
+      ..color = colorLinea
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
 
     for (int i = 0; i < points.length; i++) {
       if (valores[i] > 0 || isPorcentaje) {
@@ -870,8 +1201,10 @@ class _LineChartPainter extends CustomPainter {
         String vTxt = isPorcentaje ? '${valores[i].toStringAsFixed(1)}%' : '${valores[i].toInt()}';
         Color labelColor = metasCumplidas[i] ? const Color(0xFF10B981) : const Color(0xFFEF4444);
 
-        // ETIQUETAS MÁS GRANDES (fontSize: 13)
-        TextPainter tp = TextPainter(text: TextSpan(text: vTxt, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: labelColor)), textDirection: TextDirection.ltr);
+        TextPainter tp = TextPainter(
+          text: TextSpan(text: vTxt, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: labelColor)),
+          textDirection: TextDirection.ltr,
+        );
         tp.layout();
         tp.paint(canvas, Offset(points[i].dx - (tp.width / 2), points[i].dy - 18));
       }
@@ -906,7 +1239,10 @@ class _BarChartPainter extends CustomPainter {
       double y = paddingTop + height - (i * (height / 5));
       canvas.drawLine(Offset(paddingLeft, y), Offset(size.width, y), gridPaint);
 
-      TextPainter tp = TextPainter(text: TextSpan(text: '${(maxVal / 5 * i).toInt()}', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))), textDirection: TextDirection.ltr);
+      TextPainter tp = TextPainter(
+        text: TextSpan(text: '${(maxVal / 5 * i).toInt()}', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+        textDirection: TextDirection.ltr,
+      );
       tp.layout();
       tp.paint(canvas, Offset(5, y - 6));
     }
@@ -925,8 +1261,10 @@ class _BarChartPainter extends CustomPainter {
 
       canvas.drawRect(Rect.fromLTWH(x, y, barWidth, barH), barPaint);
 
-      // ETIQUETAS MÁS GRANDES (fontSize: 13)
-      TextPainter tpVal = TextPainter(text: TextSpan(text: '${datos[i].value.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)), textDirection: TextDirection.ltr);
+      TextPainter tpVal = TextPainter(
+        text: TextSpan(text: '${datos[i].value.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+        textDirection: TextDirection.ltr,
+      );
       tpVal.layout();
       tpVal.paint(canvas, Offset(x + (barWidth / 2) - (tpVal.width / 2), y - 18));
 
@@ -937,7 +1275,11 @@ class _BarChartPainter extends CustomPainter {
       String shortName = datos[i].key;
       if (shortName.length > 20) shortName = '${shortName.substring(0, 18)}...';
 
-      TextPainter tpName = TextPainter(text: TextSpan(text: shortName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))), textDirection: TextDirection.ltr, maxLines: 1);
+      TextPainter tpName = TextPainter(
+        text: TextSpan(text: shortName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      );
       tpName.layout();
       tpName.paint(canvas, Offset(-tpName.width, 0));
       canvas.restore();
@@ -1018,8 +1360,10 @@ class _DonutPainter extends CustomPainter {
           double textX = center.dx + (radius * 0.70) * cos(middleAngle);
           double textY = center.dy + (radius * 0.70) * sin(middleAngle);
 
-          // ETIQUETAS MÁS GRANDES (fontSize: 12)
-          TextPainter tp = TextPainter(text: TextSpan(text: '${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)), textDirection: TextDirection.ltr);
+          TextPainter tp = TextPainter(
+            text: TextSpan(text: '${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+            textDirection: TextDirection.ltr,
+          );
           tp.layout();
           tp.paint(canvas, Offset(textX - (tp.width / 2), textY - (tp.height / 2)));
         }
