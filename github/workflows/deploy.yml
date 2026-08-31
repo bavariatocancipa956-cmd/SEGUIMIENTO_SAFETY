@@ -24,7 +24,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --release --base-href "/operacion_tocancipa/"
+        run: flutter build web --release --base-href "/SEGUIMIENTO_SAFETY/"
 
       - name: Deploy to gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
