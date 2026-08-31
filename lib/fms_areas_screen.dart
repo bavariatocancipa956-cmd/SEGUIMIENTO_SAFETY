@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui' as ui;
+import 'dart:typed_data';
+import 'dart:html' as html;
 import 'api_service.dart';
 
 class DashboardFmsAreasScreen extends StatefulWidget {
@@ -12,7 +16,13 @@ class DashboardFmsAreasScreen extends StatefulWidget {
 
 class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   // ---------------------------------------------------------------------------
-  // 📅 FILTROS DE FECHA (PREDETERMINADO: DÍA ACTUAL)
+  // 📸 LLAVE PARA CAPTURA DE PANTALLA Y ESTADO FOTO
+  // ---------------------------------------------------------------------------
+  final GlobalKey _dashboardKey = GlobalKey();
+  bool _modoFoto = false; // Se activa temporalmente al capturar
+
+  // ---------------------------------------------------------------------------
+  // 📅 FILTROS DE FECHA
   // ---------------------------------------------------------------------------
   DateTime _fechaDesde = DateTime.now();
   DateTime _fechaHasta = DateTime.now();
@@ -98,14 +108,20 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
     for (var row in dataRows) {
       if (row['nombre'] == null) {
         row['reinc_mes'] = 0;
+        row['reinc_mes_ant'] = 0;
         row['reinc_ano'] = 0;
         continue;
       }
       String nombre = row['nombre'].toString();
       DateTime d = row['fecha_dt'] as DateTime;
+      DateTime dAnt = DateTime(d.year, d.month - 1);
+
       String keyAno = "${nombre}_${d.year}";
       String keyMes = "${nombre}_${d.year}_${d.month}";
+      String keyMesAnt = "${nombre}_${dAnt.year}_${dAnt.month}";
+
       row['reinc_mes'] = conteoMes[keyMes] ?? 0;
+      row['reinc_mes_ant'] = conteoMes[keyMesAnt] ?? 0;
       row['reinc_ano'] = conteoAno[keyAno] ?? 0;
     }
 
@@ -119,6 +135,66 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
     if (ev.contains('IMPACTO')) return 'IMPACTOS';
     if (ev.contains('FRENAD')) return 'FRENADAS BRUSCAS';
     return ev;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 📸 FUNCIÓN PARA CAPTURAR PANTALLA INTELIGENTE (SOLO NOVEDADES)
+  // ---------------------------------------------------------------------------
+  Future<void> _tomarFoto() async {
+    // 1. Activar el modo foto (Ocultará las áreas sin novedad en el método build)
+    setState(() {
+      _modoFoto = true;
+    });
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📸 Preparando reporte de áreas con incidentes...'),
+          backgroundColor: Color(0xFF475569),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      // 2. Dar tiempo a Flutter para que quite las áreas verdes y redibuje la pantalla
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      RenderRepaintBoundary boundary = _dashboardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+
+      ui.Image image = await boundary.toImage(pixelRatio: 1.5);
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData != null) {
+        Uint8List pngBytes = byteData.buffer.asUint8List();
+        final blob = html.Blob([pngBytes], 'image/png');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute("download", "Reporte_Novedades_FMS_${DateTime.now().millisecondsSinceEpoch}.png")
+          ..click();
+        html.Url.revokeObjectUrl(url);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Reporte de incidentes descargado con éxito'),
+            backgroundColor: Color(0xFF10B981),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Error: El reporte es muy largo. Intenta reducir el zoom de tu navegador (Ctrl + -) y vuelve a capturar.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } finally {
+      // 3. Importante: Al terminar, devolver la pantalla a la normalidad
+      if (mounted) {
+        setState(() {
+          _modoFoto = false;
+        });
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -161,9 +237,17 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
 
     final datosDelRango = _reportesFiltrados;
 
-    // ⚡ ORDENAMIENTO DE ÁREAS: Las que tienen incidentes van ARRIBA
-    List<String> areasOrdenadas = List.from(_listaAreas);
-    areasOrdenadas.sort((a, b) {
+    // FILTRO DINÁMICO: Si se está tomando la foto, ocultar áreas con 0 incidentes en este rango
+    List<String> areasAMostrar = _listaAreas.where((area) {
+      int incidentesEnArea = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == area).length;
+      if (_modoFoto && incidentesEnArea == 0) {
+        return false; // Se omite de la lista para no salir en la foto
+      }
+      return true;
+    }).toList();
+
+    // ORDENAMIENTO DE ÁREAS: Las que tienen incidentes van ARRIBA
+    areasAMostrar.sort((a, b) {
       int countA = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == a).length;
       int countB = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == b).length;
 
@@ -176,42 +260,62 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
       backgroundColor: const Color(0xFFF1F3F9),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // -----------------------------------------------------------------
-            // 1. BARRA SUPERIOR DE FILTROS DE FECHA
-            // -----------------------------------------------------------------
-            _buildBarraFiltroFechas(),
-            const SizedBox(height: 24),
+        child: RepaintBoundary(
+          key: _dashboardKey,
+          child: Container(
+            color: const Color(0xFFF1F3F9), // Evita fondos transparentes en el PNG
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildBarraFiltroFechas(),
+                const SizedBox(height: 24),
 
-            // -----------------------------------------------------------------
-            // 2. LISTADO DE ÁREAS EVALUADAS
-            // -----------------------------------------------------------------
-            if (_listaAreas.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                child: const Center(
-                  child: Text('No hay áreas registradas en el sistema.', style: TextStyle(fontSize: 16, color: Colors.blueGrey)),
-                ),
-              )
-            else
-              Column(
-                children: areasOrdenadas.map((area) {
-                  return _buildBloqueCompletoArea(area, datosDelRango);
-                }).toList(),
-              ),
-          ],
+                if (_listaAreas.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    child: const Center(
+                      child: Text('No hay áreas registradas en el sistema.', style: TextStyle(fontSize: 16, color: Colors.blueGrey)),
+                    ),
+                  )
+                else if (areasAMostrar.isEmpty && _modoFoto)
+                // Si estamos tomando la foto y TODO está verde, mostramos un reporte de éxito
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF10B981), width: 2),
+                    ),
+                    child: const Column(
+                      children: [
+                        Icon(Icons.shield_rounded, size: 64, color: Color(0xFF10B981)),
+                        SizedBox(height: 16),
+                        Text('CERO INCIDENTES REPORTADOS EN EL PERIODO SELECCIONADO',
+                          style: TextStyle(fontSize: 20, color: Color(0xFF047857), fontWeight: FontWeight.w900),
+                        ),
+                        Text('100% DE CUMPLIMIENTO EN TODAS LAS ÁREAS',
+                          style: TextStyle(fontSize: 16, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Column(
+                    children: areasAMostrar.map((area) {
+                      return _buildBloqueCompletoArea(area, datosDelRango);
+                    }).toList(),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 🔍 BARRA SUPERIOR DE FILTROS
-  // ---------------------------------------------------------------------------
   Widget _buildBarraFiltroFechas() {
     return Container(
       width: double.infinity,
@@ -234,7 +338,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
             icon: const Icon(Icons.shield_rounded, size: 20),
             label: const Text('EVALUAR RIESGO', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFDC2626), // Rojo alerta
+              backgroundColor: const Color(0xFFDC2626),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -247,6 +351,18 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
             label: const Text('RECARGAR BD', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF475569),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: _tomarFoto,
+            icon: const Icon(Icons.camera_alt_rounded, size: 20),
+            label: const Text('CAPTURAR REPORTE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.teal.shade600,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -294,7 +410,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 🏢 BLOQUE DE ÁREA (TARJETAS DE RIESGO + TABLA DE INCIDENTES)
+  // 🏢 BLOQUE DE ÁREA
   // ---------------------------------------------------------------------------
   Widget _buildBloqueCompletoArea(String area, List<Map<String, dynamic>> datosDelRango) {
     DateTime ahora = DateTime.now();
@@ -324,7 +440,6 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Banner Título del Área
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -377,11 +492,9 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Tarjetas de Métricas por Tipo de Evento
           _buildTarjetasResumenArea(todosLosDelArea, registrosRangoArea, ahora),
           const SizedBox(height: 24),
 
-          // Tabla de Operadores / Eventos del Área
           _buildTablaAreaCentrada(registrosRangoArea),
         ],
       ),
@@ -389,7 +502,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📊 TARJETAS DE INCIDENTES (MUESTRA "INCIDENTES RECIENTES")
+  // 📊 TARJETAS DE EVENTOS LIMPIAS
   // ---------------------------------------------------------------------------
   Widget _buildTarjetasResumenArea(
       List<Map<String, dynamic>> todosDelArea,
@@ -410,6 +523,14 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
             return _normalizarEvento(e['evento']?.toString() ?? '') == tipo &&
                 d.year == ahora.year &&
                 d.month == ahora.month;
+          }).length;
+
+          DateTime mesAnt = DateTime(ahora.year, ahora.month - 1);
+          int countMesAnterior = todosDelArea.where((e) {
+            DateTime d = e['fecha_dt'] as DateTime;
+            return _normalizarEvento(e['evento']?.toString() ?? '') == tipo &&
+                d.year == mesAnt.year &&
+                d.month == mesAnt.month;
           }).length;
 
           int countAno = todosDelArea.where((e) {
@@ -446,8 +567,9 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildSubMetrica('INCIDENTES RECIENTES', '$countRango', const Color(0xFFDC2626)),
-                    _buildSubMetrica('ACUM. MES', '$countMes', const Color(0xFFD97706)),
-                    _buildSubMetrica('ACUM. AÑO', '$countAno', const Color(0xFF7C3AED)),
+                    _buildSubMetrica('MES ACTUAL', '$countMes', const Color(0xFFD97706)),
+                    _buildSubMetrica('MES ANTERIOR', '$countMesAnterior', const Color(0xFF059669)),
+                    _buildSubMetrica('ACUMULADO AÑO', '$countAno', const Color(0xFF7C3AED)),
                   ],
                 ),
               ],
@@ -487,34 +609,19 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📋 TABLA CENTRADA DE OPERADORES QUE GENERARON INCIDENTE
+  // 📋 TABLA DE INCIDENTES (CON "EV. MES ANT.")
   // ---------------------------------------------------------------------------
   Widget _buildTablaAreaCentrada(List<Map<String, dynamic>> registrosArea) {
-    List<String> headers = [
-      'ÁREA',
-      'OPERADOR',
-      'SUPERVISOR',
-      'MÁQUINA',
-      'TIPO DE EVENTO',
-      'ORIGEN OPM',
-      'EVENTOS MES',
-      'EVENTOS AÑO'
-    ];
-
-    List<double> minWidths = [180, 260, 220, 110, 180, 130, 120, 120];
+    List<String> headers = ['ÁREA', 'OPERADOR', 'SUPERVISOR', 'MÁQUINA', 'TIPO DE EVENTO', 'ORIGEN OPM', 'EVENTOS MES', 'EV. MES ANT.', 'EVENTOS AÑO'];
+    List<double> minWidths = [160, 240, 200, 100, 160, 110, 110, 120, 110];
 
     if (registrosArea.isEmpty) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
         child: const Center(
-          child: Text(
-            '🛡️ No se registraron incidentes ni novedades de seguridad para esta área en la fecha seleccionada.',
+          child: Text('🛡️ No se registraron incidentes ni novedades de seguridad para esta área en la fecha seleccionada.',
             style: TextStyle(color: Color(0xFF059669), fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ),
@@ -522,10 +629,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
     }
 
     return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        borderRadius: BorderRadius.circular(10),
-      ),
+      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(10)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: LayoutBuilder(
@@ -535,15 +639,12 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
 
             if (totalWidth < constraints.maxWidth) {
               double extra = (constraints.maxWidth - totalWidth) / headers.length;
-              for (int i = 0; i < finalWidths.length; i++) {
-                finalWidths[i] += extra;
-              }
+              for (int i = 0; i < finalWidths.length; i++) finalWidths[i] += extra;
               totalWidth = constraints.maxWidth;
             }
 
             Widget tableContent = Column(
               children: [
-                // Cabecera Oscura Fija
                 Container(
                   color: const Color(0xFF1E293B),
                   child: Row(
@@ -552,16 +653,11 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                         width: finalWidths[i],
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
                         alignment: Alignment.center,
-                        child: Text(
-                          headers[i],
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5),
-                        ),
+                        child: Text(headers[i], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5)),
                       );
                     }),
                   ),
                 ),
-                // Filas de Datos
                 Column(
                   children: registrosArea.map((item) {
                     List<String> valoresFila = [
@@ -572,6 +668,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                       (item['evento'] ?? '').toString(),
                       (item['origen_opm'] ?? '').toString(),
                       '${item['reinc_mes'] ?? 0}',
+                      '${item['reinc_mes_ant'] ?? 0}',
                       '${item['reinc_ano'] ?? 0}',
                     ];
 
@@ -581,7 +678,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                         children: List.generate(valoresFila.length, (i) {
                           bool isEvento = headers[i] == 'TIPO DE EVENTO';
                           bool isOperador = headers[i] == 'OPERADOR';
-                          bool isReinc = headers[i].contains('EVENTOS');
+                          bool isReinc = headers[i].contains('EVENTOS') || headers[i].contains('EV.');
 
                           return Container(
                             width: finalWidths[i],
@@ -593,9 +690,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: (isOperador || isEvento || isReinc) ? FontWeight.bold : FontWeight.w500,
-                                color: isEvento
-                                    ? const Color(0xFFDC2626)
-                                    : (isReinc && valoresFila[i] != '0' ? const Color(0xFFB91C1C) : Colors.black87),
+                                color: isEvento ? const Color(0xFFDC2626) : (isReinc && valoresFila[i] != '0' ? const Color(0xFFB91C1C) : Colors.black87),
                               ),
                             ),
                           );
@@ -609,10 +704,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
 
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: totalWidth,
-                child: tableContent,
-              ),
+              child: SizedBox(width: totalWidth, child: tableContent),
             );
           },
         ),

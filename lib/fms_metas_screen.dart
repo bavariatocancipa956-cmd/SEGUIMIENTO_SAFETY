@@ -66,25 +66,6 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
     }
   }
 
-  String _normalizarEvento(String raw) {
-    String ev = raw.toUpperCase().trim();
-    if (ev.contains('ACELERAC')) return 'ACELERACION';
-    if (ev.contains('IMPACTO')) return 'IMPACTOS';
-    if (ev.contains('FRENAD')) return 'FRENADAS';
-    return ev;
-  }
-
-  String _normalizarArea(String raw) {
-    String a = raw.toUpperCase().trim();
-    if (a.contains('LINEA')) return 'LINEAS';
-    if (a == 'T1') return 'T1';
-    if (a.contains('T2') || a.contains('KA')) return 'T2 - KA';
-    if (a.contains('REPROCESO')) return 'REPROCESOS';
-    if (a.contains('MAQUILA')) return 'MAQUILA';
-    if (a.contains('ALMACEN') || a.contains('BODEGA')) return 'ALMACEN';
-    return a;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -106,27 +87,40 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
       );
     }
 
+    // 1. Filtrar las metas por el mes y año seleccionados
     final metasDelMes = _metas.where((m) {
       int a = int.tryParse(m['anio']?.toString() ?? '0') ?? 0;
       int me = int.tryParse(m['mes']?.toString() ?? '0') ?? 0;
       return a == _anioSeleccionado && me == _mesSeleccionado;
     }).toList();
 
-    List<String> ordenEventos = ['ACELERACION', 'IMPACTOS', 'FRENADAS'];
-    List<String> ordenAreas = ['LINEAS', 'T1', 'T2 - KA', 'REPROCESOS', 'MAQUILA', 'ALMACEN'];
+    // 2. EXTRACCIÓN DINÁMICA DE EVENTOS Y ÁREAS (Desde PostgreSQL)
+    Set<String> eventosSet = {};
+    Set<String> areasSet = {};
 
-    // Cálculos para tarjetas KPI del mes seleccionado
+    for (var m in metasDelMes) {
+      String ev = (m['evento']?.toString() ?? '').toUpperCase().trim();
+      String ar = (m['area']?.toString() ?? '').toUpperCase().trim();
+
+      if (ev.isNotEmpty) eventosSet.add(ev);
+      if (ar.isNotEmpty) areasSet.add(ar);
+    }
+
+    List<String> eventosDinamicos = eventosSet.toList()..sort();
+    List<String> areasDinamicas = areasSet.toList()..sort();
+
+    // 3. Cálculos para tarjetas KPI del mes seleccionado
     Map<String, int> metaGeneralPorEvento = {};
     Map<String, int> acumuladoPorEvento = {};
 
-    for (var ev in ordenEventos) {
-      final metasEv = metasDelMes.where((m) => _normalizarEvento(m['evento']?.toString() ?? '') == ev).toList();
+    for (var ev in eventosDinamicos) {
+      final metasEv = metasDelMes.where((m) => (m['evento']?.toString() ?? '').toUpperCase().trim() == ev).toList();
       int mGen = metasEv.isNotEmpty ? (int.tryParse(metasEv.first['meta_general']?.toString() ?? '0') ?? 0) : 0;
       int acEv = 0;
 
-      for (var area in ordenAreas) {
+      for (var area in areasDinamicas) {
         final metaItem = metasEv.firstWhere(
-              (m) => _normalizarArea(m['area']?.toString() ?? '') == area,
+              (m) => (m['area']?.toString() ?? '').toUpperCase().trim() == area,
           orElse: () => {'acomulado': 0},
         );
         acEv += int.tryParse(metaItem['acomulado']?.toString() ?? '0') ?? 0;
@@ -155,14 +149,14 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
             // -----------------------------------------------------------------
             // 2. TARJETAS KPI RESUMEN
             // -----------------------------------------------------------------
-            _buildSeccionTarjetasKpi(metaGeneralPorEvento, acumuladoPorEvento, totalMetaGeneral, totalAcumuladoGeneral),
+            _buildSeccionTarjetasKpi(eventosDinamicos, metaGeneralPorEvento, acumuladoPorEvento, totalMetaGeneral, totalAcumuladoGeneral),
             const SizedBox(height: 28),
 
             // -----------------------------------------------------------------
-            // 3. LAS 3 TABLAS INDEPENDIENTES (SIN PROYECCIÓN)
+            // 3. LAS TABLAS INDEPENDIENTES POR EVENTO (DINÁMICAS)
             // -----------------------------------------------------------------
-            ...ordenEventos.map((evento) {
-              final metasEvento = metasDelMes.where((m) => _normalizarEvento(m['evento']?.toString() ?? '') == evento).toList();
+            ...eventosDinamicos.map((evento) {
+              final metasEvento = metasDelMes.where((m) => (m['evento']?.toString() ?? '').toUpperCase().trim() == evento).toList();
               int metaGeneral = metaGeneralPorEvento[evento] ?? 0;
 
               return Padding(
@@ -171,10 +165,20 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
                   evento: evento,
                   metaGeneral: metaGeneral,
                   metasEvento: metasEvento,
-                  ordenAreas: ordenAreas,
+                  areasDinamicas: areasDinamicas,
                 ),
               );
             }),
+
+            if (eventosDinamicos.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(40),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: const Center(
+                  child: Text('No hay metas registradas para el mes y año seleccionados.', style: TextStyle(fontSize: 16, color: Colors.blueGrey)),
+                ),
+              ),
           ],
         ),
       ),
@@ -316,9 +320,10 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 💳 TARJETAS KPI RESUMEN
+  // 💳 TARJETAS KPI RESUMEN (DINÁMICAS)
   // ---------------------------------------------------------------------------
   Widget _buildSeccionTarjetasKpi(
+      List<String> eventosDinamicos,
       Map<String, int> metaGeneral,
       Map<String, int> acumulados,
       int totalMeta,
@@ -328,38 +333,44 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
       builder: (context, constraints) {
         bool esAncho = constraints.maxWidth > 900;
 
-        List<Widget> listaTarjetas = [
-          _buildTarjetaCard(
-            titulo: 'ACELERACIÓN',
-            acumulado: acumulados['ACELERACION'] ?? 0,
-            meta: metaGeneral['ACELERACION'] ?? 1,
-            icono: Icons.speed_rounded,
-          ),
-          _buildTarjetaCard(
-            titulo: 'IMPACTOS',
-            acumulado: acumulados['IMPACTOS'] ?? 0,
-            meta: metaGeneral['IMPACTOS'] ?? 1,
-            icono: Icons.warning_amber_rounded,
-          ),
-          _buildTarjetaCard(
-            titulo: 'FRENADAS',
-            acumulado: acumulados['FRENADAS'] ?? 0,
-            meta: metaGeneral['FRENADAS'] ?? 1,
-            icono: Icons.do_not_disturb_on_rounded,
-          ),
-          _buildTarjetaCard(
-            titulo: 'TOTAL GENERAL',
-            acumulado: totalAcumulado,
-            meta: totalMeta,
-            icono: Icons.analytics_rounded,
-          ),
-        ];
+        List<Widget> listaTarjetas = [];
+
+        // Crea una tarjeta por cada evento dinámico
+        for (var ev in eventosDinamicos) {
+          IconData icono = Icons.bar_chart_rounded;
+          if (ev.contains('ACELERA')) icono = Icons.speed_rounded;
+          if (ev.contains('IMPACTO')) icono = Icons.warning_amber_rounded;
+          if (ev.contains('FRENAD')) icono = Icons.do_not_disturb_on_rounded;
+
+          listaTarjetas.add(
+              _buildTarjetaCard(
+                titulo: ev,
+                acumulado: acumulados[ev] ?? 0,
+                meta: metaGeneral[ev] ?? 1,
+                icono: icono,
+              )
+          );
+        }
+
+        // Agrega la tarjeta de Total General al final
+        listaTarjetas.add(
+            _buildTarjetaCard(
+              titulo: 'TOTAL GENERAL',
+              acumulado: totalAcumulado,
+              meta: totalMeta,
+              icono: Icons.analytics_rounded,
+            )
+        );
 
         if (esAncho) {
-          return Row(
-            children: listaTarjetas
-                .map((t) => Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: t)))
-                .toList(),
+          // Si hay muchas tarjetas, permitimos hacer scroll horizontal
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: listaTarjetas
+                  .map((t) => Container(width: 280, padding: const EdgeInsets.symmetric(horizontal: 6), child: t))
+                  .toList(),
+            ),
           );
         } else {
           return Wrap(
@@ -406,15 +417,20 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(icono, size: 20, color: const Color(0xFF64748B)),
-                  const SizedBox(width: 8),
-                  Text(
-                    titulo,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 0.5),
-                  ),
-                ],
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(icono, size: 20, color: const Color(0xFF64748B)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        titulo,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -451,20 +467,20 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📋 TABLA INDEPENDIENTE POR EVENTO (SIN COLUMNA PROYECCIÓN)
+  // 📋 TABLA INDEPENDIENTE POR EVENTO
   // ---------------------------------------------------------------------------
   Widget _buildTablaEvento({
     required String evento,
     required int metaGeneral,
     required List<Map<String, dynamic>> metasEvento,
-    required List<String> ordenAreas,
+    required List<String> areasDinamicas,
   }) {
     int sumaMetaArea = 0;
     int sumaAcumulado = 0;
 
     List<TableRow> filas = [];
 
-    // CABECERA DE LA TABLA (SIN PROYECCIÓN)
+    // CABECERA DE LA TABLA
     filas.add(
       const TableRow(
         decoration: BoxDecoration(color: Color(0xFF1E293B)),
@@ -489,10 +505,10 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
       ),
     );
 
-    // FILAS POR ÁREA
-    for (var area in ordenAreas) {
+    // FILAS POR ÁREA (DINÁMICO)
+    for (var area in areasDinamicas) {
       final metaItem = metasEvento.firstWhere(
-            (m) => _normalizarArea(m['area']?.toString() ?? '') == area,
+            (m) => (m['area']?.toString() ?? '').toUpperCase().trim() == area,
         orElse: () => {'meta_area': 0, 'acomulado': 0, 'metas%': 0},
       );
 
@@ -594,9 +610,11 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  evento,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5),
+                Expanded(
+                  child: Text(
+                    evento,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 0.5),
+                  ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

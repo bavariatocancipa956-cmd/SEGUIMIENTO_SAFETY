@@ -7,8 +7,12 @@ import 'inventario_estibas_screen.dart';
 import 'dashboard_sorting_screen.dart';
 import 'dashboard_ai_screen.dart';
 import 'dashboard_fms_screen.dart';
+import 'dashboard_fms_maquinas_screen.dart';
 import 'fms_areas_screen.dart';
 import 'fms_metas_screen.dart';
+import 'fms_tendencias_screen.dart';
+import 'fms_tendencias_operadores_screen.dart';
+import 'fms_abordajes_screen.dart'; // <-- NUEVA IMPORTACIÓN PARA ABORDAJES
 
 class PantallaPrincipal extends StatefulWidget {
   final Map<String, dynamic>? datosUsuario;
@@ -20,7 +24,6 @@ class PantallaPrincipal extends StatefulWidget {
 }
 
 class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTickerProviderStateMixin {
-  // Estados para los menús desplegables
   bool _menuSeguridadExpandido = true;
   bool _menuFmsExpandido = true;
   bool _menuRoturaExpandido = false;
@@ -32,7 +35,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
 
   bool _mostrarSidebar = true;
 
-  // Vista inicial
   String _vistaActual = 'DASHBOARD_AI';
 
   void _toggleSidebar() {
@@ -90,9 +92,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
           onToggleSidebar: _toggleSidebar,
         );
 
-    // --- MÓDULOS FMS ---
       case 'DASHBOARD_FMS':
         return DashboardFmsScreen(onToggleSidebar: _toggleSidebar);
+
+      case 'DASHBOARD_FMS_MAQUINAS':
+        return DashboardFmsMaquinasScreen(onToggleSidebar: _toggleSidebar);
 
       case 'FMS_AREAS':
         return DashboardFmsAreasScreen(onToggleSidebar: _toggleSidebar);
@@ -100,7 +104,15 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'METAS_FMS':
         return FmsMetasScreen(onToggleSidebar: _toggleSidebar);
 
-      case 'GESTION_FMS':
+      case 'TENDENCIAS_FMS':
+        return FmsTendenciasScreen(onToggleSidebar: _toggleSidebar);
+
+      case 'TENDENCIAS_OPERADORES':
+        return FmsTendenciasOperadoresScreen(onToggleSidebar: _toggleSidebar);
+
+      case 'FMS_ABORDAJES': // <-- NUEVA RUTA ACTIVADA
+        return FmsAbordajesScreen(onToggleSidebar: _toggleSidebar);
+
       case 'DASHBOARD_RAYONES':
       case 'GESTION_RAYONES':
       case 'DASHBOARD_TRAFICO':
@@ -127,9 +139,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'ENTREGA_ESTIBAS': return 'PLANTA TOCANCIPÁ - ENTREGA DE ESTIBAS';
       case 'INVENTARIO_ESTIBAS': return 'PLANTA TOCANCIPÁ - INVENTARIO DE ESTIBAS';
       case 'DASHBOARD_FMS': return 'PLANTA TOCANCIPÁ - DASHBOARD FMS';
+      case 'DASHBOARD_FMS_MAQUINAS': return 'PLANTA TOCANCIPÁ - DASHBOARD MÁQUINAS';
       case 'FMS_AREAS': return 'PLANTA TOCANCIPÁ - FMS ÁREAS';
       case 'METAS_FMS': return 'PLANTA TOCANCIPÁ - CUMPLIMIENTO METAS FMS';
-      case 'GESTION_FMS': return 'PLANTA TOCANCIPÁ - GESTIÓN FMS';
+      case 'TENDENCIAS_FMS': return 'PLANTA TOCANCIPÁ - TENDENCIAS SUPERVISORES';
+      case 'TENDENCIAS_OPERADORES': return 'PLANTA TOCANCIPÁ - TENDENCIAS OPERADORES';
+      case 'FMS_ABORDAJES': return 'PLANTA TOCANCIPÁ - ABORDAJES FMS'; // <-- NUEVO TÍTULO
       case 'DASHBOARD_RAYONES': return 'PLANTA TOCANCIPÁ - DASHBOARD RAYONES';
       case 'GESTION_RAYONES': return 'PLANTA TOCANCIPÁ - GESTIÓN RAYONES';
       case 'DASHBOARD_TRAFICO': return 'PLANTA TOCANCIPÁ - PLAN DE TRÁFICO';
@@ -142,9 +157,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // 📐 SIDEBAR & MENÚS
-  // ---------------------------------------------------------------------------
   Widget _buildSidebar() {
     return Container(
       width: 260,
@@ -171,13 +183,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             ),
           ),
 
-          // 1. MÓDULO SEGURIDAD
           _buildGrupoExpandible(
             titulo: 'SEGURIDAD',
             expandido: _menuSeguridadExpandido,
             onTap: () => setState(() => _menuSeguridadExpandido = !_menuSeguridadExpandido),
             submenus: [
-              // SUBGRUPO FMS DENTRO DE SEGURIDAD
               _buildSubGrupoExpandible(
                 titulo: 'FMS',
                 expandido: _menuFmsExpandido,
@@ -187,6 +197,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                     titulo: 'Dashboard FMS',
                     idVista: 'DASHBOARD_FMS',
                     icono: Icons.pie_chart_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'Dashboard Máquinas',
+                    idVista: 'DASHBOARD_FMS_MAQUINAS',
+                    icono: Icons.precision_manufacturing_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
@@ -202,8 +218,20 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'Gestión FMS',
-                    idVista: 'GESTION_FMS',
+                    titulo: 'TENDENCIA SUPERVISORES',
+                    idVista: 'TENDENCIAS_FMS',
+                    icono: Icons.trending_up_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'TENDENCIA OPERADORES',
+                    idVista: 'TENDENCIAS_OPERADORES',
+                    icono: Icons.engineering_rounded,
+                    nivel: 3,
+                  ),
+                  _buildOpcionSubmenu(
+                    titulo: 'Abordajes', // <-- CAMBIO DE NOMBRE (Antes Gestión FMS)
+                    idVista: 'FMS_ABORDAJES', // <-- NUEVO ID
                     icono: Icons.list_alt_rounded,
                     nivel: 3,
                   ),
@@ -227,7 +255,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             ],
           ),
 
-          // 2. MÓDULO REPROCESOS
           _buildGrupoExpandible(
             titulo: 'REPROCESOS',
             expandido: _menuReprocesosExpandido,
@@ -246,7 +273,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             ],
           ),
 
-          // 3. MÓDULO CONTROLES
           _buildGrupoExpandible(
             titulo: 'CONTROLES',
             expandido: _menuControlesExpandido,
@@ -261,9 +287,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // ⚡ COMPONENTES DE MENÚ FLUIDOS
-  // ---------------------------------------------------------------------------
   Widget _buildGrupoExpandible({
     required String titulo,
     required bool expandido,
@@ -440,9 +463,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 📌 HEADER SUPERIOR
-  // ---------------------------------------------------------------------------
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -463,7 +483,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
-              color: Colors.red.shade900,
+              color: Colors.red[900],
               letterSpacing: 0.5,
             ),
           ),
