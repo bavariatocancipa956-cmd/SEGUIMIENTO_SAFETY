@@ -12,7 +12,7 @@ import 'fms_areas_screen.dart';
 import 'fms_metas_screen.dart';
 import 'fms_tendencias_screen.dart';
 import 'fms_tendencias_operadores_screen.dart';
-import 'fms_abordajes_screen.dart'; // <-- NUEVA IMPORTACIÓN PARA ABORDAJES
+import 'fms_abordajes_screen.dart';
 
 class PantallaPrincipal extends StatefulWidget {
   final Map<String, dynamic>? datosUsuario;
@@ -110,21 +110,9 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'TENDENCIAS_OPERADORES':
         return FmsTendenciasOperadoresScreen(onToggleSidebar: _toggleSidebar);
 
-      case 'FMS_ABORDAJES': // <-- NUEVA RUTA ACTIVADA
+      case 'FMS_ABORDAJES':
         return FmsAbordajesScreen(onToggleSidebar: _toggleSidebar);
 
-      case 'DASHBOARD_RAYONES':
-      case 'GESTION_RAYONES':
-      case 'DASHBOARD_TRAFICO':
-      case 'RUTINA_SAFETY':
-      case 'DTOS':
-      case 'CONTROL_VAS':
-        return Center(
-          child: Text(
-            'Módulo ${_vistaActual.replaceAll('_', ' ')} (En construcción)',
-            style: const TextStyle(color: Colors.grey, fontSize: 16),
-          ),
-        );
       default:
         return const Center(child: Text('Seleccione una opción del menú'));
     }
@@ -144,13 +132,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'METAS_FMS': return 'PLANTA TOCANCIPÁ - CUMPLIMIENTO METAS FMS';
       case 'TENDENCIAS_FMS': return 'PLANTA TOCANCIPÁ - TENDENCIAS SUPERVISORES';
       case 'TENDENCIAS_OPERADORES': return 'PLANTA TOCANCIPÁ - TENDENCIAS OPERADORES';
-      case 'FMS_ABORDAJES': return 'PLANTA TOCANCIPÁ - ABORDAJES FMS'; // <-- NUEVO TÍTULO
-      case 'DASHBOARD_RAYONES': return 'PLANTA TOCANCIPÁ - DASHBOARD RAYONES';
-      case 'GESTION_RAYONES': return 'PLANTA TOCANCIPÁ - GESTIÓN RAYONES';
-      case 'DASHBOARD_TRAFICO': return 'PLANTA TOCANCIPÁ - PLAN DE TRÁFICO';
-      case 'RUTINA_SAFETY': return 'PLANTA TOCANCIPÁ - RUTINA SAFETY';
-      case 'DTOS': return 'PLANTA TOCANCIPÁ - CONTROL DTO';
-      case 'CONTROL_VAS': return 'PLANTA TOCANCIPÁ - CONTROL VAS';
+      case 'FMS_ABORDAJES': return 'PLANTA TOCANCIPÁ - ABORDAJES FMS';
       case 'DASHBOARD_AI': return 'PLANTA TOCANCIPÁ - DASHBOARD REVISIÓN AI';
 
       default: return 'OPERACIÓN TOCANCIPÁ';
@@ -194,45 +176,45 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                 onTap: () => setState(() => _menuFmsExpandido = !_menuFmsExpandido),
                 submenus: [
                   _buildOpcionSubmenu(
-                    titulo: 'Dashboard FMS',
+                    titulo: 'SEGUIMIENTO FMS',
                     idVista: 'DASHBOARD_FMS',
-                    icono: Icons.pie_chart_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'Dashboard Máquinas',
+                    titulo: 'SEGUIMIENTO MAQUINAS',
                     idVista: 'DASHBOARD_FMS_MAQUINAS',
-                    icono: Icons.precision_manufacturing_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'FMS Áreas',
+                    titulo: 'FMS ÁREAS',
                     idVista: 'FMS_AREAS',
-                    icono: Icons.grid_view_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'Metas FMS',
+                    titulo: 'METAS FMS',
                     idVista: 'METAS_FMS',
-                    icono: Icons.fact_check_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'TENDENCIA SUPERVISORES',
+                    titulo: 'TEND.SUPER.',
                     idVista: 'TENDENCIAS_FMS',
-                    icono: Icons.trending_up_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'TENDENCIA OPERADORES',
+                    titulo: 'TEND. OPERA.',
                     idVista: 'TENDENCIAS_OPERADORES',
-                    icono: Icons.engineering_rounded,
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                   _buildOpcionSubmenu(
-                    titulo: 'Abordajes', // <-- CAMBIO DE NOMBRE (Antes Gestión FMS)
-                    idVista: 'FMS_ABORDAJES', // <-- NUEVO ID
-                    icono: Icons.list_alt_rounded,
+                    titulo: 'CUMP. ABORDAJES',
+                    idVista: 'FMS_ABORDAJES',
+                    icono: Icons.local_shipping_rounded,
                     nivel: 3,
                   ),
                 ],
@@ -246,12 +228,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                   _buildOpcionSubmenu(titulo: 'Reporte Hora a Hora', idVista: 'ROTURA_HORA_HORA', icono: Icons.access_time_rounded, nivel: 3),
                 ],
               ),
-              _buildOpcionSubmenu(titulo: 'Rutina Safety General', idVista: 'RUTINA_SAFETY', icono: Icons.security_rounded),
-              _buildOpcionSubmenu(titulo: 'Dashboard Rayones', idVista: 'DASHBOARD_RAYONES', icono: Icons.show_chart_rounded),
-              _buildOpcionSubmenu(titulo: 'Gestión Rayones', idVista: 'GESTION_RAYONES', icono: Icons.assignment_rounded),
-              _buildOpcionSubmenu(titulo: 'Dashboard Tráfico', idVista: 'DASHBOARD_TRAFICO', icono: Icons.group_outlined),
-              _buildOpcionSubmenu(titulo: 'Control DTOs', idVista: 'DTOS', icono: Icons.fact_check_outlined),
-              _buildOpcionSubmenu(titulo: 'Gestión VAS', idVista: 'CONTROL_VAS', icono: Icons.verified_outlined),
             ],
           ),
 
