@@ -2,8 +2,10 @@ name: operacion_tocancipa
 description: "A new Flutter project."
 publish_to: 'none'
 version: 1.0.0+1
+
 environment:
   sdk: ^3.12.2
+
 dependencies:
   flutter:
     sdk: flutter
@@ -15,10 +17,12 @@ dependencies:
   image_picker: ^1.0.7
   pdf: ^3.10.8
   printing: ^5.11.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
 flutter:
   uses-material-design: true
   assets:
