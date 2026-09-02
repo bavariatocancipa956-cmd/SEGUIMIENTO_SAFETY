@@ -107,7 +107,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     String ev = raw.toUpperCase().trim();
     ev = ev.replaceAll('Á', 'A').replaceAll('É', 'E').replaceAll('Í', 'I').replaceAll('Ó', 'O').replaceAll('Ú', 'U');
 
-    // Abreviaturas solicitadas para las tablas
     if (ev.contains('ACELERACI')) return 'ACEL';
     if (ev.contains('IMPACTO')) return 'IMPAC';
     if (ev.contains('FRENAD')) return 'FREN';
@@ -312,22 +311,21 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Wrap(
-        spacing: 20,
-        runSpacing: 20,
-        crossAxisAlignment: WrapCrossAlignment.end,
+        spacing: 16, // Espaciado horizontal
+        runSpacing: 16, // Espaciado vertical si hace salto de línea
+        crossAxisAlignment: WrapCrossAlignment.end, // Alinea los botones al ras de los inputs
         children: [
           _buildCampoFecha('DESDE', _fechaDesde, (d) => setState(() => _fechaDesde = d)),
           _buildCampoFecha('HASTA', _fechaHasta, (d) => setState(() => _fechaHasta = d)),
-
           _buildSearchableDropdown('TURNO', _turnoSeleccionado, _listaTurnos, (val) => setState(() => _turnoSeleccionado = val!)),
           _buildSearchableDropdown('SUPERVISOR', _supervisorSeleccionado, _listaSupervisores, (val) => setState(() => _supervisorSeleccionado = val!)),
           _buildSearchableDropdown('OPERADOR', _operadorSeleccionado, _listaOperadores, (val) => setState(() => _operadorSeleccionado = val!)),
           _buildSearchableDropdown('ÁREA', _areaSeleccionada, _listaAreas, (val) => setState(() => _areaSeleccionada = val!)),
           _buildSearchableDropdown('ORIGEN OPM', _origenSeleccionado, _listaOrigenes, (val) => setState(() => _origenSeleccionado = val!)),
 
-          Container(
-            height: 52,
-            margin: const EdgeInsets.only(top: 8),
+          // Botones (Se eliminó RECARGAR BD y se ajustó el contenedor)
+          SizedBox(
+            height: 52, // Misma altura que los TextFields
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -338,20 +336,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF2563EB),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 0,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: _cargarDatosBD,
-                  icon: const Icon(Icons.refresh_rounded, size: 20),
-                  label: const Text('RECARGAR BD', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF475569),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     elevation: 0,
                   ),
@@ -362,7 +347,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.teal.shade600,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     elevation: 0,
                   ),
@@ -374,7 +359,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple.shade600,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     elevation: 0,
                   ),
@@ -573,11 +558,9 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
   // ---------------------------------------------------------------------------
   Widget _buildFilaGraficas(BuildContext context, List<Map<String, dynamic>> datos) {
 
-    // --- 1. DATOS SEMANALES (Nueva Gráfica) ---
     Map<String, int> eventosPorSemana = {};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
-      // Obtener el lunes de la semana de ese evento
       DateTime startOfWeek = d.subtract(Duration(days: d.weekday - 1));
       String key = "${startOfWeek.year}-${startOfWeek.month.toString().padLeft(2,'0')}-${startOfWeek.day.toString().padLeft(2,'0')}";
       eventosPorSemana[key] = (eventosPorSemana[key] ?? 0) + 1;
@@ -605,7 +588,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     final weeklyBarData = LineChartBarData(
       spots: weeklySpots,
       isCurved: true,
-      color: const Color(0xFF8B5CF6), // Morado
+      color: const Color(0xFF8B5CF6),
       barWidth: 3,
       isStrokeCapRound: true,
       dotData: const FlDotData(show: true),
@@ -613,7 +596,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     );
 
 
-    // --- 2. DATOS MENSUALES ---
     List<int> mesesOrdenados = [];
     DateTime temp = DateTime(_fechaDesde.year, _fechaDesde.month, 1);
     DateTime finMes = DateTime(_fechaHasta.year, _fechaHasta.month, 1);
@@ -649,7 +631,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     }
 
 
-    // --- 3. DATOS DIARIOS ---
     Map<String, int> eventosPorFecha = {};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
@@ -678,7 +659,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     final dailyBarData = LineChartBarData(
       spots: dailySpots,
       isCurved: true,
-      color: const Color(0xFFE11D48), // Rojo
+      color: const Color(0xFFE11D48),
       barWidth: 3,
       isStrokeCapRound: true,
       dotData: const FlDotData(show: true),
@@ -686,17 +667,14 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     );
 
 
-    // --- 4. DATOS RADIALES (Días de la semana) ---
     Map<int, int> eventosPorDiaSemana = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
       eventosPorDiaSemana[d.weekday] = (eventosPorDiaSemana[d.weekday] ?? 0) + 1;
     }
 
-    double containerHeight = 380;
+    double containerHeight = 260;
     bool isWide = MediaQuery.of(context).size.width > 1100;
-
-    // ----- WIDGETS DE GRÁFICAS -----
 
     Widget graficaSemanal = Container(
       height: containerHeight,
@@ -710,7 +688,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Eventos por Semana', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-          const SizedBox(height: 40),
+          const SizedBox(height: 16),
           Expanded(
             child: weeklySpots.isNotEmpty
                 ? LayoutBuilder(
@@ -787,7 +765,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Total por Mes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-          const SizedBox(height: 40),
+          const SizedBox(height: 16),
           Expanded(
             child: monthlyBars.isNotEmpty
                 ? BarChart(
@@ -852,7 +830,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Eventos por Día', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-          const SizedBox(height: 40),
+          const SizedBox(height: 16),
           Expanded(
             child: dailySpots.isNotEmpty
                 ? LayoutBuilder(
@@ -929,7 +907,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Distribución por Días', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Expanded(
             child: RadarChart(
               RadarChartData(
@@ -953,9 +931,8 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                   const dias = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
                   int cantidad = eventosPorDiaSemana[index + 1] ?? 0;
                   return RadarChartTitle(
-                    // Etiqueta con el día y el valor numérico debajo
                     text: '${dias[index]}\n($cantidad)',
-                    angle: 0, // Mantiene el texto derecho para fácil lectura
+                    angle: 0,
                   );
                 },
                 titleTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey),
@@ -970,7 +947,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       ),
     );
 
-    // LAYOUT EN 2 FILAS
     Widget fila1 = isWide
         ? Row(children: [Expanded(flex: 3, child: graficaSemanal), const SizedBox(width: 24), Expanded(flex: 2, child: graficaMensual)])
         : Column(children: [graficaSemanal, const SizedBox(height: 24), graficaMensual]);
@@ -1020,7 +996,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       },
     );
 
-    // EXTRACT EVENTOS COLUMNAS (Automáticamente usarán las abreviaturas)
     Set<String> eventosSet = {};
     for(var d in datos) {
       eventosSet.add(_normalizarEvento(d['evento']?.toString() ?? ''));
@@ -1028,9 +1003,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     List<String> columnasEventos = eventosSet.toList()..sort();
     List<double> anchosEventos = List.generate(columnasEventos.length, (index) => 3.0);
 
-    // ---------------------------------------------------------
-    // 1. CÁLCULO VERDADERO DEL "TOTAL AÑO" (Desde la base completa)
-    // ---------------------------------------------------------
     int anioObjetivo = _fechaHasta.year;
     Map<String, int> supervisorTotalAno = {};
     Map<String, int> operadorTotalAno = {};
@@ -1049,9 +1021,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       }
     }
 
-    // ---------------------------------------------------------
-    // SUPERVISORES
-    // ---------------------------------------------------------
     Map<String, Map<String, int>> supData = {};
     Map<String, int> supTotal = {};
 
@@ -1103,9 +1072,6 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       },
     );
 
-    // ---------------------------------------------------------
-    // OPERADORES
-    // ---------------------------------------------------------
     Map<String, Map<String, int>> opData = {};
     Map<String, int> opTotal = {};
 

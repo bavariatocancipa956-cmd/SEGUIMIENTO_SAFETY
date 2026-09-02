@@ -19,13 +19,19 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   // 📸 LLAVE PARA CAPTURA DE PANTALLA Y ESTADO FOTO
   // ---------------------------------------------------------------------------
   final GlobalKey _dashboardKey = GlobalKey();
-  bool _modoFoto = false; // Se activa temporalmente al capturar
+  bool _modoFoto = false;
 
   // ---------------------------------------------------------------------------
-  // 📅 FILTROS DE FECHA
+  // 📅 FILTROS DE MES Y FECHA ESPECÍFICA
   // ---------------------------------------------------------------------------
-  DateTime _fechaDesde = DateTime.now();
-  DateTime _fechaHasta = DateTime.now();
+  int _mesSeleccionado = DateTime.now().month;
+  int _anioSeleccionado = DateTime.now().year;
+  DateTime? _fechaEspecifica; // Si es null, muestra todo el mes.
+
+  final List<String> _nombresMeses = [
+    'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
+  ];
 
   // ---------------------------------------------------------------------------
   // 🌐 ESTADOS DE BASE DE DATOS
@@ -39,6 +45,29 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   void initState() {
     super.initState();
     _cargarDatosBD();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🗓️ FUNCIÓN AUXILIAR NOMBRES DE MESES
+  // ---------------------------------------------------------------------------
+  String _obtenerNombreMes(int mes, {bool corto = false}) {
+    const mesesCortos = [
+      'ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN',
+      'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'
+    ];
+    if (mes < 1 || mes > 12) return '';
+    return corto ? mesesCortos[mes - 1] : _nombresMeses[mes - 1];
+  }
+
+  // ---------------------------------------------------------------------------
+  // 🛠️ NORMALIZACIÓN DE ÁREAS (UNIFICA CARPAS)
+  // ---------------------------------------------------------------------------
+  String _normalizarArea(String raw) {
+    String ar = raw.toUpperCase().trim();
+    if (ar.contains('CARPA')) {
+      return 'CARPAS';
+    }
+    return ar;
   }
 
   // ---------------------------------------------------------------------------
@@ -74,7 +103,8 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
 
       Set<String> areasSet = {};
       for (var d in dataCalculada) {
-        String ar = (d['area'] ?? '').toString().trim();
+        String ar = _normalizarArea(d['area']?.toString() ?? '');
+        d['area_normalizada'] = ar;
         if (ar.isNotEmpty) areasSet.add(ar);
       }
 
@@ -138,10 +168,9 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📸 FUNCIÓN PARA CAPTURAR PANTALLA INTELIGENTE (SOLO NOVEDADES)
+  // 📸 FUNCIÓN PARA CAPTURAR PANTALLA INTELIGENTE
   // ---------------------------------------------------------------------------
   Future<void> _tomarFoto() async {
-    // 1. Activar el modo foto (Ocultará las áreas sin novedad en el método build)
     setState(() {
       _modoFoto = true;
     });
@@ -155,7 +184,6 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
         ),
       );
 
-      // 2. Dar tiempo a Flutter para que quite las áreas verdes y redibuje la pantalla
       await Future.delayed(const Duration(milliseconds: 600));
 
       RenderRepaintBoundary boundary = _dashboardKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
@@ -188,7 +216,6 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
         ),
       );
     } finally {
-      // 3. Importante: Al terminar, devolver la pantalla a la normalidad
       if (mounted) {
         setState(() {
           _modoFoto = false;
@@ -198,17 +225,24 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 🔄 FILTRADO POR RANGO DE FECHA
+  // 🔄 FILTRADO POR MES O DÍA ESPECÍFICO
   // ---------------------------------------------------------------------------
   List<Map<String, dynamic>> get _reportesFiltrados {
-    DateTime desdeClean = DateTime(_fechaDesde.year, _fechaDesde.month, _fechaDesde.day);
-    DateTime hastaClean = DateTime(_fechaHasta.year, _fechaHasta.month, _fechaHasta.day, 23, 59, 59);
-
     return _reportesFms.where((item) {
       try {
         DateTime fechaItem = item['fecha_dt'] as DateTime;
-        return fechaItem.isAfter(desdeClean.subtract(const Duration(seconds: 1))) &&
-            fechaItem.isBefore(hastaClean.add(const Duration(seconds: 1)));
+
+        // Si hay una fecha específica seleccionada, filtramos solo por ese día exacto
+        if (_fechaEspecifica != null) {
+          return fechaItem.year == _fechaEspecifica!.year &&
+              fechaItem.month == _fechaEspecifica!.month &&
+              fechaItem.day == _fechaEspecifica!.day;
+        }
+        // Si no, filtramos por todo el mes seleccionado
+        else {
+          return fechaItem.year == _anioSeleccionado &&
+              fechaItem.month == _mesSeleccionado;
+        }
       } catch (e) {
         return false;
       }
@@ -237,19 +271,17 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
 
     final datosDelRango = _reportesFiltrados;
 
-    // FILTRO DINÁMICO: Si se está tomando la foto, ocultar áreas con 0 incidentes en este rango
     List<String> areasAMostrar = _listaAreas.where((area) {
-      int incidentesEnArea = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == area).length;
+      int incidentesEnArea = datosDelRango.where((e) => e['area_normalizada'] == area).length;
       if (_modoFoto && incidentesEnArea == 0) {
-        return false; // Se omite de la lista para no salir en la foto
+        return false;
       }
       return true;
     }).toList();
 
-    // ORDENAMIENTO DE ÁREAS: Las que tienen incidentes van ARRIBA
     areasAMostrar.sort((a, b) {
-      int countA = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == a).length;
-      int countB = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == b).length;
+      int countA = datosDelRango.where((e) => e['area_normalizada'] == a).length;
+      int countB = datosDelRango.where((e) => e['area_normalizada'] == b).length;
 
       if (countA > 0 && countB == 0) return -1;
       if (countA == 0 && countB > 0) return 1;
@@ -263,11 +295,11 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
         child: RepaintBoundary(
           key: _dashboardKey,
           child: Container(
-            color: const Color(0xFFF1F3F9), // Evita fondos transparentes en el PNG
+            color: const Color(0xFFF1F3F9),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildBarraFiltroFechas(),
+                _buildBarraFiltrosMes(),
                 const SizedBox(height: 24),
 
                 if (_listaAreas.isEmpty)
@@ -280,7 +312,6 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                     ),
                   )
                 else if (areasAMostrar.isEmpty && _modoFoto)
-                // Si estamos tomando la foto y TODO está verde, mostramos un reporte de éxito
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(40),
@@ -316,7 +347,10 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
     );
   }
 
-  Widget _buildBarraFiltroFechas() {
+  // ---------------------------------------------------------------------------
+  // 🎛️ NUEVA BARRA DE FILTROS: MES / AÑO / DÍA ESPECÍFICO
+  // ---------------------------------------------------------------------------
+  Widget _buildBarraFiltrosMes() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -330,9 +364,131 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
         runSpacing: 16,
         crossAxisAlignment: WrapCrossAlignment.end,
         children: [
-          _buildCampoFecha('DESDE', _fechaDesde, (d) => setState(() => _fechaDesde = d)),
-          _buildCampoFecha('HASTA', _fechaHasta, (d) => setState(() => _fechaHasta = d)),
+          // 1. Selector de Mes
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('MES A EVALUAR', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _mesSeleccionado,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                    items: List.generate(12, (index) {
+                      return DropdownMenuItem(
+                        value: index + 1,
+                        child: Text(_nombresMeses[index]),
+                      );
+                    }),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _mesSeleccionado = val;
+                          _fechaEspecifica = null; // Resetea el día si cambia de mes
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
 
+          // 2. Selector de Año
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('AÑO', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _anioSeleccionado,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.blueGrey),
+                    items: [2024, 2025, 2026, 2027, 2028].map((anio) {
+                      return DropdownMenuItem(
+                        value: anio,
+                        child: Text(anio.toString()),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _anioSeleccionado = val;
+                          _fechaEspecifica = null;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // 3. Filtro Opcional de Fecha Específica
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('FILTRAR DÍA EXACTO (OPCIONAL)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () async {
+                  // Limita el calendario para que solo se pueda elegir un día del mes y año seleccionados
+                  DateTime primerDiaDelMes = DateTime(_anioSeleccionado, _mesSeleccionado, 1);
+                  DateTime ultimoDiaDelMes = DateTime(_anioSeleccionado, _mesSeleccionado + 1, 0);
+
+                  DateTime? picked = await showDatePicker(
+                    context: context,
+                    initialDate: _fechaEspecifica ?? primerDiaDelMes,
+                    firstDate: primerDiaDelMes,
+                    lastDate: ultimoDiaDelMes,
+                  );
+                  if (picked != null) {
+                    setState(() => _fechaEspecifica = picked);
+                  }
+                },
+                child: Container(
+                  width: 220,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _fechaEspecifica != null
+                            ? "${_fechaEspecifica!.day.toString().padLeft(2, '0')}/${_fechaEspecifica!.month.toString().padLeft(2, '0')}/${_fechaEspecifica!.year}"
+                            : "Ver todo el mes",
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _fechaEspecifica != null ? const Color(0xFFDC2626) : const Color(0xFF334155)
+                        ),
+                      ),
+                      if (_fechaEspecifica != null)
+                        GestureDetector(
+                          onTap: () => setState(() => _fechaEspecifica = null),
+                          child: const Icon(Icons.close_rounded, size: 18, color: Colors.red),
+                        )
+                      else
+                        const Icon(Icons.calendar_month_rounded, size: 18, color: Colors.blueGrey),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Botones de acción
           ElevatedButton.icon(
             onPressed: () => setState(() {}),
             icon: const Icon(Icons.shield_rounded, size: 20),
@@ -374,49 +530,15 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
     );
   }
 
-  Widget _buildCampoFecha(String titulo, DateTime fecha, Function(DateTime) onSelect) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(titulo, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: () async {
-            DateTime? picked = await showDatePicker(
-              context: context,
-              initialDate: fecha,
-              firstDate: DateTime(2020),
-              lastDate: DateTime(2030),
-            );
-            if (picked != null) onSelect(picked);
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text("${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}",
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                const SizedBox(width: 12),
-                const Icon(Icons.calendar_today_rounded, size: 18, color: Colors.blueGrey),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   // ---------------------------------------------------------------------------
   // 🏢 BLOQUE DE ÁREA
   // ---------------------------------------------------------------------------
   Widget _buildBloqueCompletoArea(String area, List<Map<String, dynamic>> datosDelRango) {
-    DateTime ahora = DateTime.now();
+    // La referencia SIEMPRE es el mes seleccionado, sin importar si filtramos un solo día.
+    DateTime mesReferencia = DateTime(_anioSeleccionado, _mesSeleccionado);
 
-    final todosLosDelArea = _reportesFms.where((e) => (e['area'] ?? '').toString().trim() == area).toList();
-    final registrosRangoArea = datosDelRango.where((e) => (e['area'] ?? '').toString().trim() == area).toList();
+    final todosLosDelArea = _reportesFms.where((e) => e['area_normalizada'] == area).toList();
+    final registrosRangoArea = datosDelRango.where((e) => e['area_normalizada'] == area).toList();
     bool tieneActividad = registrosRangoArea.isNotEmpty;
 
     return Container(
@@ -492,10 +614,10 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
           ),
           const SizedBox(height: 24),
 
-          _buildTarjetasResumenArea(todosLosDelArea, registrosRangoArea, ahora),
+          _buildTarjetasResumenArea(todosLosDelArea, registrosRangoArea, mesReferencia),
           const SizedBox(height: 24),
 
-          _buildTablaAreaCentrada(registrosRangoArea),
+          _buildTablaAreaCentrada(registrosRangoArea, mesReferencia),
         ],
       ),
     );
@@ -507,35 +629,39 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   Widget _buildTarjetasResumenArea(
       List<Map<String, dynamic>> todosDelArea,
       List<Map<String, dynamic>> rangoArea,
-      DateTime ahora,
+      DateTime mesReferencia,
       ) {
     List<String> tiposStandard = ['FRENADAS BRUSCAS', 'ACELERACION', 'IMPACTOS'];
+
+    String nombreMesActual = _obtenerNombreMes(mesReferencia.month);
+    DateTime mesAnteriorDt = DateTime(mesReferencia.year, mesReferencia.month - 1);
+    String nombreMesAnterior = _obtenerNombreMes(mesAnteriorDt.month);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         bool isWide = constraints.maxWidth > 800;
 
         List<Widget> cards = tiposStandard.map((tipo) {
+          // Incidentes recientes cuenta lo que haya en el filtro activo (Todo el mes O un día específico)
           int countRango = rangoArea.where((e) => _normalizarEvento(e['evento']?.toString() ?? '') == tipo).length;
 
           int countMes = todosDelArea.where((e) {
             DateTime d = e['fecha_dt'] as DateTime;
             return _normalizarEvento(e['evento']?.toString() ?? '') == tipo &&
-                d.year == ahora.year &&
-                d.month == ahora.month;
+                d.year == mesReferencia.year &&
+                d.month == mesReferencia.month;
           }).length;
 
-          DateTime mesAnt = DateTime(ahora.year, ahora.month - 1);
           int countMesAnterior = todosDelArea.where((e) {
             DateTime d = e['fecha_dt'] as DateTime;
             return _normalizarEvento(e['evento']?.toString() ?? '') == tipo &&
-                d.year == mesAnt.year &&
-                d.month == mesAnt.month;
+                d.year == mesAnteriorDt.year &&
+                d.month == mesAnteriorDt.month;
           }).length;
 
           int countAno = todosDelArea.where((e) {
             DateTime d = e['fecha_dt'] as DateTime;
-            return _normalizarEvento(e['evento']?.toString() ?? '') == tipo && d.year == ahora.year;
+            return _normalizarEvento(e['evento']?.toString() ?? '') == tipo && d.year == mesReferencia.year;
           }).length;
 
           return Container(
@@ -566,9 +692,13 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildSubMetrica('INCIDENTES RECIENTES', '$countRango', const Color(0xFFDC2626)),
-                    _buildSubMetrica('MES ACTUAL', '$countMes', const Color(0xFFD97706)),
-                    _buildSubMetrica('MES ANTERIOR', '$countMesAnterior', const Color(0xFF059669)),
+                    _buildSubMetrica(
+                        _fechaEspecifica != null ? 'DIA ${_fechaEspecifica!.day}' : 'TOTAL MES',
+                        '$countRango',
+                        const Color(0xFFDC2626)
+                    ),
+                    _buildSubMetrica(nombreMesActual, '$countMes', const Color(0xFFD97706)),
+                    _buildSubMetrica(nombreMesAnterior, '$countMesAnterior', const Color(0xFF059669)),
                     _buildSubMetrica('ACUMULADO AÑO', '$countAno', const Color(0xFF7C3AED)),
                   ],
                 ),
@@ -609,10 +739,14 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📋 TABLA DE INCIDENTES (CON "EV. MES ANT.")
+  // 📋 TABLA DE INCIDENTES
   // ---------------------------------------------------------------------------
-  Widget _buildTablaAreaCentrada(List<Map<String, dynamic>> registrosArea) {
-    List<String> headers = ['ÁREA', 'OPERADOR', 'SUPERVISOR', 'MÁQUINA', 'TIPO DE EVENTO', 'ORIGEN OPM', 'EVENTOS MES', 'EV. MES ANT.', 'EVENTOS AÑO'];
+  Widget _buildTablaAreaCentrada(List<Map<String, dynamic>> registrosArea, DateTime mesReferencia) {
+    String mesActualCorto = _obtenerNombreMes(mesReferencia.month, corto: true);
+    DateTime mesAntDt = DateTime(mesReferencia.year, mesReferencia.month - 1);
+    String mesAntCorto = _obtenerNombreMes(mesAntDt.month, corto: true);
+
+    List<String> headers = ['ÁREA', 'OPERADOR', 'SUPERVISOR', 'MÁQUINA', 'TIPO DE EVENTO', 'ORIGEN OPM', 'EV. $mesActualCorto', 'EV. $mesAntCorto', 'EVENTOS AÑO'];
     List<double> minWidths = [160, 240, 200, 100, 160, 110, 110, 120, 110];
 
     if (registrosArea.isEmpty) {
@@ -661,7 +795,7 @@ class _DashboardFmsAreasScreenState extends State<DashboardFmsAreasScreen> {
                 Column(
                   children: registrosArea.map((item) {
                     List<String> valoresFila = [
-                      (item['area'] ?? '').toString(),
+                      (item['area_normalizada'] ?? '').toString(),
                       (item['nombre'] ?? '').toString(),
                       (item['supervisor'] ?? '').toString(),
                       (item['maquina'] ?? '').toString(),
