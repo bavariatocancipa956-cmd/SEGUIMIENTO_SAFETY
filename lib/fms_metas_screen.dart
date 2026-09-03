@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart'; // 👈 Necesario para la captura de pantalla
+import 'dart:ui' as ui; // 👈 Necesario para la manipulación de la imagen
+import 'dart:typed_data'; // 👈 Necesario para el formato PNG
+import 'dart:html' as html; // 👈 Necesario para la descarga en Web
 import 'api_service.dart';
 
 class FmsMetasScreen extends StatefulWidget {
@@ -18,6 +22,8 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
   String _errorMessage = '';
 
   List<Map<String, dynamic>> _metas = [];
+
+  final GlobalKey _pantallaKey = GlobalKey(); // 👈 Llave para capturar la vista
 
   final List<String> _nombresMeses = [
     'ENERO',
@@ -66,6 +72,50 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // 📸 FUNCIÓN PARA DESCARGAR EL PNG
+  // ---------------------------------------------------------------------------
+  Future<void> _tomarFoto() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📸 Generando imagen de las Metas...'),
+          backgroundColor: Color(0xFF475569),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      // Pequeña pausa para asegurar que la UI esté dibujada
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      RenderRepaintBoundary boundary = _pantallaKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      ui.Image image = await boundary.toImage(pixelRatio: 2.0); // Alta calidad
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData != null) {
+        Uint8List pngBytes = byteData.buffer.asUint8List();
+
+        final blob = html.Blob([pngBytes], 'image/png');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute("download", "Metas_FMS_${_nombresMeses[_mesSeleccionado - 1]}_$_anioSeleccionado.png")
+          ..click();
+        html.Url.revokeObjectUrl(url);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Imagen descargada exitosamente'),
+            backgroundColor: Color(0xFF107C41),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error al capturar imagen: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -94,7 +144,7 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
       return a == _anioSeleccionado && me == _mesSeleccionado;
     }).toList();
 
-    // 2. EXTRACCIÓN DINÁMICA DE EVENTOS Y ÁREAS (Desde PostgreSQL)
+    // 2. EXTRACCIÓN DINÁMICA DE EVENTOS Y ÁREAS
     Set<String> eventosSet = {};
     Set<String> areasSet = {};
 
@@ -115,19 +165,14 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
 
     for (var ev in eventosDinamicos) {
       final metasEv = metasDelMes.where((m) => (m['evento']?.toString() ?? '').toUpperCase().trim() == ev).toList();
-      int mGen = metasEv.isNotEmpty ? (int.tryParse(metasEv.first['meta_general']?.toString() ?? '0') ?? 0) : 0;
-      int acEv = 0;
 
-      for (var area in areasDinamicas) {
-        final metaItem = metasEv.firstWhere(
-              (m) => (m['area']?.toString() ?? '').toUpperCase().trim() == area,
-          orElse: () => {'acomulado': 0},
-        );
-        acEv += int.tryParse(metaItem['acomulado']?.toString() ?? '0') ?? 0;
-      }
+      // 👈 LÓGICA CORREGIDA: Sumamos dinámicamente las 'meta_area' para obtener la Meta General real y exacta.
+      // Esto evita errores si alguien guardó mal el número 'meta_general' en la BD.
+      int mGenCalculada = metasEv.fold(0, (sum, m) => sum + (int.tryParse(m['meta_area']?.toString() ?? '0') ?? 0));
+      int acEvCalculado = metasEv.fold(0, (sum, m) => sum + (int.tryParse(m['acomulado']?.toString() ?? '0') ?? 0));
 
-      metaGeneralPorEvento[ev] = mGen;
-      acumuladoPorEvento[ev] = acEv;
+      metaGeneralPorEvento[ev] = mGenCalculada;
+      acumuladoPorEvento[ev] = acEvCalculado;
     }
 
     int totalMetaGeneral = metaGeneralPorEvento.values.fold(0, (sum, val) => sum + val);
@@ -136,50 +181,57 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // -----------------------------------------------------------------
-            // 1. HEADER SUPERIOR CON FILTRO DE MES Y AÑO
-            // -----------------------------------------------------------------
-            _buildHeaderConFiltros(),
-            const SizedBox(height: 24),
+        // 👈 REPAINT BOUNDARY para poder capturar toda la página en PNG
+        child: RepaintBoundary(
+          key: _pantallaKey,
+          child: Container(
+            color: const Color(0xFFF8FAFC), // Asegura el fondo al descargar la imagen
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // -----------------------------------------------------------------
+                // 1. HEADER SUPERIOR CON FILTRO DE MES Y AÑO
+                // -----------------------------------------------------------------
+                _buildHeaderConFiltros(),
+                const SizedBox(height: 24),
 
-            // -----------------------------------------------------------------
-            // 2. TARJETAS KPI RESUMEN
-            // -----------------------------------------------------------------
-            _buildSeccionTarjetasKpi(eventosDinamicos, metaGeneralPorEvento, acumuladoPorEvento, totalMetaGeneral, totalAcumuladoGeneral),
-            const SizedBox(height: 28),
+                // -----------------------------------------------------------------
+                // 2. TARJETAS KPI RESUMEN
+                // -----------------------------------------------------------------
+                _buildSeccionTarjetasKpi(eventosDinamicos, metaGeneralPorEvento, acumuladoPorEvento, totalMetaGeneral, totalAcumuladoGeneral),
+                const SizedBox(height: 28),
 
-            // -----------------------------------------------------------------
-            // 3. LAS TABLAS INDEPENDIENTES POR EVENTO (DINÁMICAS)
-            // -----------------------------------------------------------------
-            ...eventosDinamicos.map((evento) {
-              final metasEvento = metasDelMes.where((m) => (m['evento']?.toString() ?? '').toUpperCase().trim() == evento).toList();
-              int metaGeneral = metaGeneralPorEvento[evento] ?? 0;
+                // -----------------------------------------------------------------
+                // 3. LAS TABLAS INDEPENDIENTES POR EVENTO (DINÁMICAS)
+                // -----------------------------------------------------------------
+                ...eventosDinamicos.map((evento) {
+                  final metasEvento = metasDelMes.where((m) => (m['evento']?.toString() ?? '').toUpperCase().trim() == evento).toList();
+                  int metaGeneral = metaGeneralPorEvento[evento] ?? 0;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 28.0),
-                child: _buildTablaEvento(
-                  evento: evento,
-                  metaGeneral: metaGeneral,
-                  metasEvento: metasEvento,
-                  areasDinamicas: areasDinamicas,
-                ),
-              );
-            }),
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 28.0),
+                    child: _buildTablaEvento(
+                      evento: evento,
+                      metaGeneral: metaGeneral,
+                      metasEvento: metasEvento,
+                      areasDinamicas: areasDinamicas,
+                    ),
+                  );
+                }),
 
-            if (eventosDinamicos.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                child: const Center(
-                  child: Text('No hay metas registradas para el mes y año seleccionados.', style: TextStyle(fontSize: 16, color: Colors.blueGrey)),
-                ),
-              ),
-          ],
+                if (eventosDinamicos.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    child: const Center(
+                      child: Text('No hay metas registradas para el mes y año seleccionados.', style: TextStyle(fontSize: 16, color: Colors.blueGrey)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -311,6 +363,19 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
                 ),
+              ),
+
+              // 👈 NUEVO BOTÓN PARA CAPTURA (FOTO)
+              ElevatedButton(
+                onPressed: _tomarFoto,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.teal.shade600,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                child: const Icon(Icons.camera_alt_rounded, size: 20),
               ),
             ],
           ),
@@ -624,7 +689,7 @@ class _FmsMetasScreenState extends State<FmsMetasScreen> {
                     border: Border.all(color: const Color(0xFF60A5FA).withOpacity(0.4)),
                   ),
                   child: Text(
-                    'META GENERAL: $metaGeneral',
+                    'META GENERAL: $metaGeneral', // 👈 ESTO AHORA MUESTRA EL CÁLCULO PERFECTO
                     style: const TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                 ),
