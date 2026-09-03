@@ -39,14 +39,27 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
   bool _isLoading = true;
   String _errorMessage = '';
 
+  // ---------------------------------------------------------------------------
+  // 📜 CONTROLADORES DE SCROLL PARA GRÁFICAS
+  // ---------------------------------------------------------------------------
+  final ScrollController _scrollSemanal = ScrollController();
+  final ScrollController _scrollDiario = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _cargarDatosBD();
   }
 
+  @override
+  void dispose() {
+    _scrollSemanal.dispose();
+    _scrollDiario.dispose();
+    super.dispose();
+  }
+
   // ---------------------------------------------------------------------------
-  // 🔌 CONSUMO DE API Y EXTRACCIÓN DE FILTROS
+  // 🔌 CONSUMO DE API
   // ---------------------------------------------------------------------------
   Future<void> _cargarDatosBD() async {
     setState(() {
@@ -55,24 +68,24 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     });
 
     try {
-      final resultados = await ApiService.consultarTabla(
-        esquema: 'fms',
-        tabla: 'fms_reporte',
-      );
+      final rawReportes = await ApiService.consultarTabla(esquema: 'fms', tabla: 'fms_reporte');
 
-      if (resultados.isEmpty) {
+      List<Map<String, dynamic>> dataLista = [];
+      for (var e in rawReportes) {
+        if (e is Map) {
+          Map<String, dynamic> mapa = Map<String, dynamic>.from(e);
+          mapa['fecha_dt'] = DateTime.tryParse(mapa['fecha'].toString()) ?? DateTime.now();
+          dataLista.add(mapa);
+        }
+      }
+
+      if (dataLista.isEmpty) {
         setState(() {
           _reportesFms = [];
           _isLoading = false;
         });
         return;
       }
-
-      List<Map<String, dynamic>> dataLista = resultados.map((e) {
-        Map<String, dynamic> mapa = Map<String, dynamic>.from(e);
-        mapa['fecha_dt'] = DateTime.tryParse(mapa['fecha'].toString()) ?? DateTime.now();
-        return mapa;
-      }).toList();
 
       Set<String> ops = {'Todos'};
       Set<String> sups = {'Todos'};
@@ -130,6 +143,12 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     return f;
   }
 
+  int _obtenerSemanaDelAno(DateTime date) {
+    DateTime thursday = date.add(Duration(days: 4 - date.weekday));
+    int dayOfYear = thursday.difference(DateTime(thursday.year, 1, 1)).inDays;
+    return 1 + (dayOfYear / 7).floor();
+  }
+
   // ---------------------------------------------------------------------------
   // 🔄 FILTRADO DINÁMICO
   // ---------------------------------------------------------------------------
@@ -168,7 +187,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     }
 
     StringBuffer csvData = StringBuffer();
-    csvData.writeln('FECHA,HORA,TURNO,MÁQUINA,ÁREA,OPERADOR,ORIGEN OPM,ALERTA,SUPERVISOR');
+    csvData.writeln('FECHA,HORA,TURNO,MÁQUINA,ÁREA,OPERADOR,ORIGEN OPM,ALERTA,SUPERVISOR,ATRIBUIBLE FLOTA');
 
     for (var item in datos) {
       String fecha = _formatearFechaLimpia(item['fecha']);
@@ -180,8 +199,9 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       String origen = '"${(item['origen_opm']?.toString() ?? '').replaceAll('"', '""')}"';
       String evento = '"${_normalizarEvento(item['evento']?.toString() ?? '').replaceAll('"', '""')}"';
       String supervisor = '"${(item['supervisor']?.toString() ?? '').replaceAll('"', '""')}"';
+      String atribuible = '"${(item['atribuible_flota']?.toString() ?? '').replaceAll('"', '""')}"';
 
-      csvData.writeln('$fecha,$hora,$turno,$maquina,$area,$operador,$origen,$evento,$supervisor');
+      csvData.writeln('$fecha,$hora,$turno,$maquina,$area,$operador,$origen,$evento,$supervisor,$atribuible');
     }
 
     final bytes = utf8.encode(csvData.toString());
@@ -284,11 +304,14 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
             else ...[
               _buildKpiCards(datosActuales),
               const SizedBox(height: 24),
-              _buildFilaGraficas(context, datosActuales),
+              // 👈 GRÁFICAS REORGANIZADAS CON LA TABLA INTEGRADA EN LA MISMA SECCIÓN
+              _buildFilaGraficasYTablaMaquinas(context, datosActuales, _reportesFms),
+              const SizedBox(height: 24),
+              _buildFilaDonas(context, datosActuales),
+              const SizedBox(height: 24),
+              _buildFilaTablasAreasOrigen(context, datosActuales),
               const SizedBox(height: 24),
               _buildFilaTablasPrincipales(context, datosActuales),
-              const SizedBox(height: 24),
-              _buildFilaTablasSecundarias(context, datosActuales),
               const SizedBox(height: 24),
               _buildTablaDetalleCompletoStateful(datosActuales),
             ]
@@ -311,9 +334,9 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Wrap(
-        spacing: 16, // Espaciado horizontal
-        runSpacing: 16, // Espaciado vertical si hace salto de línea
-        crossAxisAlignment: WrapCrossAlignment.end, // Alinea los botones al ras de los inputs
+        spacing: 16,
+        runSpacing: 16,
+        crossAxisAlignment: WrapCrossAlignment.end,
         children: [
           _buildCampoFecha('DESDE', _fechaDesde, (d) => setState(() => _fechaDesde = d)),
           _buildCampoFecha('HASTA', _fechaHasta, (d) => setState(() => _fechaHasta = d)),
@@ -323,9 +346,8 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
           _buildSearchableDropdown('ÁREA', _areaSeleccionada, _listaAreas, (val) => setState(() => _areaSeleccionada = val!)),
           _buildSearchableDropdown('ORIGEN OPM', _origenSeleccionado, _listaOrigenes, (val) => setState(() => _origenSeleccionado = val!)),
 
-          // Botones (Se eliminó RECARGAR BD y se ajustó el contenedor)
           SizedBox(
-            height: 52, // Misma altura que los TextFields
+            height: 52,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -554,31 +576,65 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📊 FILA 1: GRÁFICAS (Semanal, Mensual, Diaria, Radial)
+  // 🎨 WIDGET AUXILIAR PARA TÍTULOS DE GRÁFICAS Y TABLAS
   // ---------------------------------------------------------------------------
-  Widget _buildFilaGraficas(BuildContext context, List<Map<String, dynamic>> datos) {
+  Widget _buildChartTitle(String title, IconData icon, Color iconColor) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF1E293B),
+            letterSpacing: -0.5,
+          ),
+        ),
+      ],
+    );
+  }
 
+  // ---------------------------------------------------------------------------
+  // 📊 NUEVA ORGANIZACIÓN: GRÁFICAS + TABLA DE MÁQUINAS EN 2 FILAS INTELIGENTES
+  // ---------------------------------------------------------------------------
+  Widget _buildFilaGraficasYTablaMaquinas(BuildContext context, List<Map<String, dynamic>> datos, List<Map<String, dynamic>> datosCompletos) {
+    // ---------------------- 1. DATOS SEMANALES ----------------------
     Map<String, int> eventosPorSemana = {};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
       DateTime startOfWeek = d.subtract(Duration(days: d.weekday - 1));
-      String key = "${startOfWeek.year}-${startOfWeek.month.toString().padLeft(2,'0')}-${startOfWeek.day.toString().padLeft(2,'0')}";
+      String key = "${startOfWeek.year}-${startOfWeek.month.toString().padLeft(2, '0')}-${startOfWeek.day.toString().padLeft(2, '0')}";
       eventosPorSemana[key] = (eventosPorSemana[key] ?? 0) + 1;
     }
 
-    List<String> labelsSemanas = [];
     List<int> conteoPorSemana = [];
+    List<String> labelsSemanas = [];
+
     DateTime cursorSemana = DateTime(_fechaDesde.year, _fechaDesde.month, _fechaDesde.day);
     cursorSemana = cursorSemana.subtract(Duration(days: cursorSemana.weekday - 1));
     DateTime finSemana = DateTime(_fechaHasta.year, _fechaHasta.month, _fechaHasta.day);
 
     while (!cursorSemana.isAfter(finSemana)) {
-      String label = "${cursorSemana.day.toString().padLeft(2, '0')}/${cursorSemana.month.toString().padLeft(2, '0')}";
-      labelsSemanas.add(label);
-      String key = "${cursorSemana.year}-${cursorSemana.month.toString().padLeft(2,'0')}-${cursorSemana.day.toString().padLeft(2,'0')}";
+      String key = "${cursorSemana.year}-${cursorSemana.month.toString().padLeft(2, '0')}-${cursorSemana.day.toString().padLeft(2, '0')}";
       conteoPorSemana.add(eventosPorSemana[key] ?? 0);
+
+      int numSemana = _obtenerSemanaDelAno(cursorSemana);
+      labelsSemanas.add(numSemana.toString());
+
       cursorSemana = cursorSemana.add(const Duration(days: 7));
     }
+
+    double maxWeekly = conteoPorSemana.isEmpty ? 10 : conteoPorSemana.reduce((a, b) => a > b ? a : b).toDouble();
+    double maxYWeekly = maxWeekly == 0 ? 10 : maxWeekly * 1.25;
 
     List<FlSpot> weeklySpots = [];
     for (int i = 0; i < conteoPorSemana.length; i++) {
@@ -588,40 +644,54 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     final weeklyBarData = LineChartBarData(
       spots: weeklySpots,
       isCurved: true,
-      color: const Color(0xFF8B5CF6),
+      color: Colors.black,
       barWidth: 3,
       isStrokeCapRound: true,
       dotData: const FlDotData(show: true),
-      belowBarData: BarAreaData(show: true, color: const Color(0xFF8B5CF6).withOpacity(0.1)),
+      belowBarData: BarAreaData(show: true, color: Colors.black.withOpacity(0.05)),
     );
 
+    // ---------------------- 2. DATOS MENSUALES (IGNORANDO FILTROS) ----------------------
+    int anioActual = _fechaHasta.year;
+    int maxMes = DateTime.now().month;
+    if (_fechaHasta.month > maxMes) maxMes = _fechaHasta.month;
 
-    List<int> mesesOrdenados = [];
-    DateTime temp = DateTime(_fechaDesde.year, _fechaDesde.month, 1);
-    DateTime finMes = DateTime(_fechaHasta.year, _fechaHasta.month, 1);
-    while (!temp.isAfter(finMes)) {
-      if (!mesesOrdenados.contains(temp.month)) mesesOrdenados.add(temp.month);
-      temp = DateTime(temp.year, temp.month + 1, 1);
-    }
+    List<int> mesesOrdenados = List.generate(maxMes, (i) => i + 1);
+    Map<int, int> conteoMensual = {for (var m in mesesOrdenados) m: 0};
 
-    Map<int, int> conteoMensual = { for (var m in mesesOrdenados) m: 0 };
-    for (var item in datos) {
+    for (var item in datosCompletos) {
       DateTime d = item['fecha_dt'] as DateTime;
-      if(conteoMensual.containsKey(d.month)) {
+      if (d.year == anioActual && conteoMensual.containsKey(d.month)) {
         conteoMensual[d.month] = (conteoMensual[d.month] ?? 0) + 1;
       }
     }
 
     const nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    double maxMonthly = conteoMensual.values.isEmpty ? 10 : conteoMensual.values.reduce((a, b) => a > b ? a : b).toDouble();
+    double maxYMonthly = maxMonthly == 0 ? 10 : maxMonthly * 1.25;
 
     List<BarChartGroupData> monthlyBars = [];
     for (int i = 0; i < mesesOrdenados.length; i++) {
+      int mesActualVal = conteoMensual[mesesOrdenados[i]]!;
+      Color barColor = Colors.red;
+
+      if (i > 0) {
+        int mesAnteriorVal = conteoMensual[mesesOrdenados[i - 1]]!;
+        if (mesActualVal < mesAnteriorVal) {
+          barColor = const Color(0xFF059669);
+        } else {
+          barColor = const Color(0xFFDC2626);
+        }
+      } else {
+        barColor = const Color(0xFFDC2626);
+      }
+
       monthlyBars.add(BarChartGroupData(
         x: i,
         barRods: [
           BarChartRodData(
-            toY: conteoMensual[mesesOrdenados[i]]!.toDouble(),
-            color: const Color(0xFF2563EB),
+            toY: mesActualVal.toDouble(),
+            color: barColor,
             width: mesesOrdenados.length > 6 ? 24 : 45,
             borderRadius: BorderRadius.circular(6),
           )
@@ -630,26 +700,34 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       ));
     }
 
-
+    // ---------------------- 3. DATOS DIARIOS ----------------------
     Map<String, int> eventosPorFecha = {};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
-      String key = "${d.year}-${d.month.toString().padLeft(2,'0')}-${d.day.toString().padLeft(2,'0')}";
+      String key = "${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}";
       eventosPorFecha[key] = (eventosPorFecha[key] ?? 0) + 1;
     }
 
     List<String> labelsFechas = [];
     List<int> conteoPorDia = [];
-    DateTime cursor = DateTime(_fechaDesde.year, _fechaDesde.month, _fechaDesde.day);
+
+    DateTime inicioUltimoMes = DateTime(_fechaHasta.year, _fechaHasta.month, 1);
+    DateTime cursor = _fechaDesde.isAfter(inicioUltimoMes)
+        ? DateTime(_fechaDesde.year, _fechaDesde.month, _fechaDesde.day)
+        : inicioUltimoMes;
+
     DateTime fin = DateTime(_fechaHasta.year, _fechaHasta.month, _fechaHasta.day);
 
     while (!cursor.isAfter(fin)) {
       String label = cursor.day.toString().padLeft(2, '0');
       labelsFechas.add(label);
-      String key = "${cursor.year}-${cursor.month.toString().padLeft(2,'0')}-${cursor.day.toString().padLeft(2,'0')}";
+      String key = "${cursor.year}-${cursor.month.toString().padLeft(2, '0')}-${cursor.day.toString().padLeft(2, '0')}";
       conteoPorDia.add(eventosPorFecha[key] ?? 0);
       cursor = cursor.add(const Duration(days: 1));
     }
+
+    double maxDaily = conteoPorDia.isEmpty ? 10 : conteoPorDia.reduce((a, b) => a > b ? a : b).toDouble();
+    double maxYDaily = maxDaily == 0 ? 10 : maxDaily * 1.25;
 
     List<FlSpot> dailySpots = [];
     for (int i = 0; i < conteoPorDia.length; i++) {
@@ -666,18 +744,19 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       belowBarData: BarAreaData(show: true, color: const Color(0xFFE11D48).withOpacity(0.1)),
     );
 
-
+    // ---------------------- 4. DATOS RADIALES ----------------------
     Map<int, int> eventosPorDiaSemana = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0};
     for (var item in datos) {
       DateTime d = item['fecha_dt'] as DateTime;
       eventosPorDiaSemana[d.weekday] = (eventosPorDiaSemana[d.weekday] ?? 0) + 1;
     }
 
-    double containerHeight = 260;
-    bool isWide = MediaQuery.of(context).size.width > 1100;
+    // ---------------------- CONSTRUCCIÓN DE WIDGETS INDIVIDUALES ----------------------
+    double topContainerHeight = 280;
+    double bottomContainerHeight = 400; // Igualado con la tabla
 
     Widget graficaSemanal = Container(
-      height: containerHeight,
+      height: topContainerHeight,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -687,19 +766,27 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Eventos por Semana', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+          _buildChartTitle('Eventos por Semana', Icons.stacked_line_chart_rounded, Colors.black),
           const SizedBox(height: 16),
           Expanded(
             child: weeklySpots.isNotEmpty
-                ? LayoutBuilder(
-                builder: (context, constr) {
-                  double minWidthRequired = weeklySpots.length * 55.0;
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
+                ? LayoutBuilder(builder: (context, constr) {
+              double minWidthRequired = weeklySpots.length * 55.0;
+              return Scrollbar(
+                controller: _scrollSemanal,
+                thumbVisibility: true,
+                thickness: 6,
+                radius: const Radius.circular(10),
+                child: SingleChildScrollView(
+                  controller: _scrollSemanal,
+                  scrollDirection: Axis.horizontal,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
                     child: SizedBox(
                       width: minWidthRequired > constr.maxWidth ? minWidthRequired : constr.maxWidth,
                       child: LineChart(
                         LineChartData(
+                          maxY: maxYWeekly,
                           lineBarsData: [weeklyBarData],
                           showingTooltipIndicators: weeklySpots.map((spot) => ShowingTooltipIndicators([LineBarSpot(weeklyBarData, 0, spot)])).toList(),
                           lineTouchData: LineTouchData(
@@ -708,7 +795,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                               getTooltipColor: (touchedSpot) => Colors.transparent,
                               tooltipPadding: EdgeInsets.zero,
                               tooltipMargin: 8,
-                              getTooltipItems: (spots) => spots.map((s) => LineTooltipItem(s.y.toInt().toString(), const TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold, fontSize: 14))).toList(),
+                              getTooltipItems: (spots) => spots.map((s) => LineTooltipItem(s.y.toInt().toString(), const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14))).toList(),
                             ),
                           ),
                           gridData: const FlGridData(show: true, drawVerticalLine: false),
@@ -723,7 +810,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                                   if (idx >= 0 && idx < labelsSemanas.length) {
                                     return Padding(
                                       padding: const EdgeInsets.only(top: 10.0),
-                                      child: Text(labelsSemanas[idx], style: const TextStyle(fontSize: 11, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+                                      child: Text(labelsSemanas[idx], style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
                                     );
                                   }
                                   return const Text('');
@@ -744,17 +831,18 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                         ),
                       ),
                     ),
-                  );
-                }
-            )
+                  ),
+                ),
+              );
+            })
                 : const Center(child: Text("Sin datos", style: TextStyle(fontSize: 16))),
           ),
         ],
       ),
     );
 
-    Widget graficaMensual = Container(
-      height: containerHeight,
+    Widget graficaRadialDias = Container(
+      height: topContainerHeight,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -764,12 +852,65 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Total por Mes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+          _buildChartTitle('Distribución por Días', Icons.radar_rounded, const Color(0xFF059669)),
+          const SizedBox(height: 16),
+          Expanded(
+            child: RadarChart(
+              RadarChartData(
+                dataSets: [
+                  RadarDataSet(
+                    fillColor: const Color(0xFF059669).withOpacity(0.25),
+                    borderColor: const Color(0xFF059669),
+                    entryRadius: 3.5,
+                    borderWidth: 2,
+                    dataEntries: List.generate(
+                      7,
+                          (i) => RadarEntry(value: eventosPorDiaSemana[i + 1]!.toDouble()),
+                    ),
+                  )
+                ],
+                radarBackgroundColor: Colors.transparent,
+                borderData: FlBorderData(show: false),
+                radarBorderData: const BorderSide(color: Colors.transparent),
+                titlePositionPercentageOffset: 0.15,
+                getTitle: (index, angle) {
+                  const dias = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
+                  int cantidad = eventosPorDiaSemana[index + 1] ?? 0;
+                  return RadarChartTitle(
+                    text: '${dias[index]}\n($cantidad)',
+                    angle: 0,
+                  );
+                },
+                titleTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                tickCount: 3,
+                ticksTextStyle: const TextStyle(fontSize: 10, color: Colors.transparent),
+                tickBorderData: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                gridBorderData: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    Widget graficaMensual = Container(
+      height: topContainerHeight,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildChartTitle('Total por Mes', Icons.bar_chart_rounded, const Color(0xFFDC2626)),
           const SizedBox(height: 16),
           Expanded(
             child: monthlyBars.isNotEmpty
                 ? BarChart(
               BarChartData(
+                maxY: maxYMonthly,
                 barGroups: monthlyBars,
                 barTouchData: BarTouchData(
                   enabled: false,
@@ -777,7 +918,12 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                     getTooltipColor: (group) => Colors.transparent,
                     tooltipPadding: EdgeInsets.zero,
                     tooltipMargin: 8,
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(rod.toY.round().toString(), const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 14)),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      return BarTooltipItem(
+                          rod.toY.round().toString(),
+                          TextStyle(color: rod.color, fontWeight: FontWeight.bold, fontSize: 14)
+                      );
+                    },
                   ),
                 ),
                 gridData: const FlGridData(show: false),
@@ -819,7 +965,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     );
 
     Widget graficaDiaria = Container(
-      height: containerHeight,
+      height: bottomContainerHeight, // 👈 IGUALADO CON LA TABLA (400px)
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -829,19 +975,27 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Eventos por Día', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+          _buildChartTitle('Eventos por Día', Icons.show_chart_rounded, const Color(0xFFE11D48)),
           const SizedBox(height: 16),
           Expanded(
             child: dailySpots.isNotEmpty
-                ? LayoutBuilder(
-                builder: (context, constr) {
-                  double minWidthRequired = dailySpots.length * 45.0;
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
+                ? LayoutBuilder(builder: (context, constr) {
+              double minWidthRequired = dailySpots.length * 45.0;
+              return Scrollbar(
+                controller: _scrollDiario,
+                thumbVisibility: true,
+                thickness: 6,
+                radius: const Radius.circular(10),
+                child: SingleChildScrollView(
+                  controller: _scrollDiario,
+                  scrollDirection: Axis.horizontal,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
                     child: SizedBox(
                       width: minWidthRequired > constr.maxWidth ? minWidthRequired : constr.maxWidth,
                       child: LineChart(
                         LineChartData(
+                          maxY: maxYDaily,
                           lineBarsData: [dailyBarData],
                           showingTooltipIndicators: dailySpots.map((spot) => ShowingTooltipIndicators([LineBarSpot(dailyBarData, 0, spot)])).toList(),
                           lineTouchData: LineTouchData(
@@ -886,74 +1040,59 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                         ),
                       ),
                     ),
-                  );
-                }
-            )
+                  ),
+                ),
+              );
+            })
                 : const Center(child: Text("Sin datos", style: TextStyle(fontSize: 16))),
           ),
         ],
       ),
     );
 
-    Widget graficaRadialDias = Container(
-      height: containerHeight,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Distribución por Días', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
-          const SizedBox(height: 16),
-          Expanded(
-            child: RadarChart(
-              RadarChartData(
-                dataSets: [
-                  RadarDataSet(
-                    fillColor: const Color(0xFF059669).withOpacity(0.25),
-                    borderColor: const Color(0xFF059669),
-                    entryRadius: 3.5,
-                    borderWidth: 2,
-                    dataEntries: List.generate(
-                      7,
-                          (i) => RadarEntry(value: eventosPorDiaSemana[i + 1]!.toDouble()),
-                    ),
-                  )
-                ],
-                radarBackgroundColor: Colors.transparent,
-                borderData: FlBorderData(show: false),
-                radarBorderData: const BorderSide(color: Colors.transparent),
-                titlePositionPercentageOffset: 0.15,
-                getTitle: (index, angle) {
-                  const dias = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
-                  int cantidad = eventosPorDiaSemana[index + 1] ?? 0;
-                  return RadarChartTitle(
-                    text: '${dias[index]}\n($cantidad)',
-                    angle: 0,
-                  );
-                },
-                titleTextStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                tickCount: 3,
-                ticksTextStyle: const TextStyle(fontSize: 10, color: Colors.transparent),
-                tickBorderData: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-                gridBorderData: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-              ),
-            ),
-          ),
-        ],
-      ),
+    Widget tablaMaquinas = _buildTablaEventosPorMaquinaInterna(datosCompletos);
+
+    bool isWideScreen = MediaQuery.of(context).size.width > 1200; // Un poco más amplio para las 3 gráficas
+
+    // 👈 FILA 1: Semanal | Radial | Mensual
+    Widget fila1 = isWideScreen
+        ? Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 3, child: graficaSemanal),
+        const SizedBox(width: 24),
+        Expanded(flex: 2, child: graficaRadialDias),
+        const SizedBox(width: 24),
+        Expanded(flex: 2, child: graficaMensual),
+      ],
+    )
+        : Column(
+      children: [
+        graficaSemanal,
+        const SizedBox(height: 24),
+        graficaRadialDias,
+        const SizedBox(height: 24),
+        graficaMensual,
+      ],
     );
 
-    Widget fila1 = isWide
-        ? Row(children: [Expanded(flex: 3, child: graficaSemanal), const SizedBox(width: 24), Expanded(flex: 2, child: graficaMensual)])
-        : Column(children: [graficaSemanal, const SizedBox(height: 24), graficaMensual]);
-
-    Widget fila2 = isWide
-        ? Row(children: [Expanded(flex: 3, child: graficaDiaria), const SizedBox(width: 24), Expanded(flex: 2, child: graficaRadialDias)])
-        : Column(children: [graficaDiaria, const SizedBox(height: 24), graficaRadialDias]);
+    // 👈 FILA 2: Diaria | Tabla Máquinas
+    Widget fila2 = isWideScreen
+        ? Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 4, child: graficaDiaria),
+        const SizedBox(width: 24),
+        Expanded(flex: 3, child: tablaMaquinas),
+      ],
+    )
+        : Column(
+      children: [
+        graficaDiaria,
+        const SizedBox(height: 24),
+        tablaMaquinas,
+      ],
+    );
 
     return Column(
       children: [
@@ -965,36 +1104,287 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // 📋 FILA 2: TABLAS PRINCIPALES CON ORDENAMIENTO (TURNOS, SUPERVISORES, OPERADORES)
+  // 📋 TABLA: EVENTOS POR MÁQUINA (COMPLETAMENTE LOCAL Y 100% FUNCIONAL)
   // ---------------------------------------------------------------------------
-  Widget _buildFilaTablasPrincipales(BuildContext context, List<Map<String, dynamic>> datos) {
-    bool isWide = MediaQuery.of(context).size.width > 1400;
-    int total = datos.isEmpty ? 1 : datos.length;
+  Widget _buildTablaEventosPorMaquinaInterna(List<Map<String, dynamic>> datosCompletos) {
+    List<String> headers = ['MES', 'MÁQUINAS', 'EVENTOS', 'RESULTADO', 'TENDENCIA'];
+    List<double> flexWidths = [3, 2, 2, 2, 3];
 
-    // TURNO
-    int t1 = datos.where((e) => e['turno'] == 'T1').length;
-    int t2 = datos.where((e) => e['turno'] == 'T2').length;
-    int t3 = datos.where((e) => e['turno'] == 'T3').length;
+    // 1. Valores manuales (quemados)
+    final Map<int, int> maquinasManuales = {
+      1: 68, 2: 66, 3: 66, 4: 65, 5: 68, 6: 73,
+      7: 71, 8: 68, 9: 68, 10: 68, 11: 68, 12: 68,
+    };
 
-    List<List<String>> filasTurno = [
-      ['T1', '$t1', '${((t1 / total) * 100).toStringAsFixed(1)}%'],
-      ['T2', '$t2', '${((t2 / total) * 100).toStringAsFixed(1)}%'],
-      ['T3', '$t3', '${((t3 / total) * 100).toStringAsFixed(1)}%'],
-    ];
+    // 2. Extraemos los Eventos de la lista completa (ignorando filtros superiores) pero solo los NO/PENDIENTE
+    Map<int, int> eventosPorMes = {};
+    int maxMesEncontrado = DateTime.now().month;
 
-    Widget tablaTurno = _buildTablaSortable(
-      titulo: 'Resumen por Turno',
-      headers: ['TURNO', 'EVENTOS', '% TOTAL'],
-      minWidths: [2, 3, 3],
-      filasIniciales: filasTurno,
-      height: 480,
+    for (var item in datosCompletos) {
+      String atribuibleFlota = item['atribuible_flota']?.toString().trim().toUpperCase() ?? '';
+      if (atribuibleFlota == 'NO' || atribuibleFlota == 'PENDIENTE') {
+        DateTime? d = item['fecha_dt'] as DateTime?;
+        if (d != null) {
+          eventosPorMes[d.month] = (eventosPorMes[d.month] ?? 0) + 1;
+          if (d.month > maxMesEncontrado) maxMesEncontrado = d.month;
+        }
+      }
+    }
+
+    const nombresMeses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    List<List<String>> filasIniciales = [];
+    double resAnterior = -1.0;
+
+    // 3. Generamos las filas
+    for (int mes = 1; mes <= maxMesEncontrado; mes++) {
+      int maquinas = maquinasManuales[mes] ?? 68;
+      int eventos = eventosPorMes[mes] ?? 0;
+
+      if (maquinas > 0 || eventos > 0) {
+        double resultado = maquinas > 0 ? (eventos / maquinas) : 0.0;
+        String tendenciaStr = '➖ BASE';
+
+        if (resAnterior != -1.0) {
+          if (resultado < resAnterior) {
+            tendenciaStr = '⬇ BAJÓ';
+          } else if (resultado > resAnterior) {
+            tendenciaStr = '⬆ SUBIÓ';
+          } else {
+            tendenciaStr = '➖ IGUAL';
+          }
+        }
+        resAnterior = resultado;
+
+        filasIniciales.add([
+          nombresMeses[mes - 1],
+          maquinas.toString(),
+          eventos.toString(),
+          resultado.toStringAsFixed(2),
+          tendenciaStr,
+        ]);
+      }
+    }
+
+    if (filasIniciales.isEmpty) {
+      return _buildTablaSortable(
+        titulo: 'Eventos por Máquina Mensual',
+        headers: headers,
+        minWidths: flexWidths,
+        filasIniciales: [],
+        height: 400, // 👈 MISMA ALTURA QUE LA GRÁFICA DIARIA
+        mostrarTotal: false,
+      );
+    }
+
+    return _buildTablaSortable(
+      titulo: 'Eventos por Máquina Mensual',
+      headers: headers,
+      minWidths: flexWidths,
+      filasIniciales: filasIniciales,
+      height: 400, // 👈 MISMA ALTURA QUE LA GRÁFICA DIARIA
       mostrarTotal: true,
       calcularTotales: (filas) {
-        int sumTotal = 0;
-        for (var f in filas) { sumTotal += int.parse(f[1]); }
-        return ['TOTALES', '$sumTotal', '100%'];
+        int sumEventos = 0;
+        int maxMaquinas = 0;
+
+        for (var f in filas) {
+          int m = int.tryParse(f[1]) ?? 0;
+          int e = int.tryParse(f[2]) ?? 0;
+          sumEventos += e;
+          if (m > maxMaquinas) maxMaquinas = m;
+        }
+
+        double resTotal = maxMaquinas > 0 ? (sumEventos / maxMaquinas) : 0.0;
+        return ['TOTALES', maxMaquinas.toString(), sumEventos.toString(), resTotal.toStringAsFixed(2), '-'];
       },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 📊 FILA: GRÁFICAS DE DONA (SOLO TURNOS Y EVENTOS)
+  // ---------------------------------------------------------------------------
+  Widget _buildFilaDonas(BuildContext context, List<Map<String, dynamic>> datos) {
+    bool isWide = MediaQuery.of(context).size.width > 800;
+
+    Map<String, int> conteoTurnos = {'T1': 0, 'T2': 0, 'T3': 0};
+    Map<String, int> conteoEventos = {};
+
+    for (var d in datos) {
+      String t = d['turno']?.toString() ?? '';
+      if (conteoTurnos.containsKey(t)) conteoTurnos[t] = conteoTurnos[t]! + 1;
+
+      String ev = _normalizarEvento(d['evento']?.toString() ?? 'SIN EVENTO');
+      conteoEventos[ev] = (conteoEventos[ev] ?? 0) + 1;
+    }
+
+    Widget pieTurnos = _buildCustomPieChart('Resumen por Turno', conteoTurnos, const [Color(0xFF2563EB), Color(0xFFD97706), Color(0xFF7C3AED)]);
+    Widget pieEventos = _buildCustomPieChart('Tipos de Evento', conteoEventos, const [Color(0xFFE11D48), Color(0xFF059669), Color(0xFFD97706), Color(0xFF7C3AED), Color(0xFF2563EB)]);
+
+    if (isWide) {
+      return Row(
+        children: [
+          Expanded(child: pieTurnos),
+          const SizedBox(width: 24),
+          Expanded(child: pieEventos),
+        ],
+      );
+    } else {
+      return Column(
+        children: [pieTurnos, const SizedBox(height: 24), pieEventos],
+      );
+    }
+  }
+
+  Widget _buildCustomPieChart(String title, Map<String, int> data, List<Color> colors) {
+    var entries = data.entries.where((e) => e.value > 0).toList()..sort((a, b) => b.value.compareTo(a.value));
+    int total = entries.fold(0, (sum, e) => sum + e.value);
+
+    List<PieChartSectionData> sections = [];
+    for (int i = 0; i < entries.length; i++) {
+      double percentage = total == 0 ? 0 : (entries[i].value / total) * 100;
+      sections.add(PieChartSectionData(
+        value: entries[i].value.toDouble(),
+        color: colors[i % colors.length],
+        title: '${percentage.toStringAsFixed(1)}%',
+        radius: 35,
+        titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+      ));
+    }
+
+    return Container(
+      height: 320,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildChartTitle(title, Icons.pie_chart_rounded, colors.first),
+          const SizedBox(height: 16),
+          Expanded(
+            child: entries.isEmpty
+                ? const Center(child: Text("Sin datos", style: TextStyle(fontSize: 16)))
+                : Column(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: PieChart(
+                    PieChartData(
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 40,
+                      sections: sections,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  flex: 2,
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.center,
+                      children: List.generate(entries.length, (i) {
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(width: 10, height: 10, decoration: BoxDecoration(color: colors[i % colors.length], shape: BoxShape.circle)),
+                            const SizedBox(width: 6),
+                            Text(
+                                '${entries[i].key} (${entries[i].value})',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155))
+                            ),
+                          ],
+                        );
+                      }),
+                    ),
+                  ),
+                )
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // 📋 FILA: TABLAS SECUNDARIAS (ÁREAS Y ORIGEN OPM)
+  // ---------------------------------------------------------------------------
+  Widget _buildFilaTablasAreasOrigen(BuildContext context, List<Map<String, dynamic>> datos) {
+    bool isWide = MediaQuery.of(context).size.width > 800;
+    int total = datos.isEmpty ? 1 : datos.length;
+
+    Map<String, int> conteoAreas = {};
+    for(var d in datos) {
+      String ar = d['area']?.toString().trim() ?? 'SIN ÁREA';
+      if(ar.isEmpty) ar = 'SIN ÁREA';
+      conteoAreas[ar] = (conteoAreas[ar] ?? 0) + 1;
+    }
+    List<List<String>> filasAr = conteoAreas.keys.map((a) => [a, conteoAreas[a].toString(), '${((conteoAreas[a]!/total)*100).toStringAsFixed(1)}%']).toList();
+
+    Map<String, int> conteoOrigen = {};
+    for(var d in datos) {
+      String or = d['origen_opm']?.toString().trim() ?? 'SIN ORIGEN';
+      if(or.isEmpty) or = 'SIN ORIGEN';
+      conteoOrigen[or] = (conteoOrigen[or] ?? 0) + 1;
+    }
+    List<List<String>> filasOr = conteoOrigen.keys.map((o) => [o, conteoOrigen[o].toString(), '${((conteoOrigen[o]!/total)*100).toStringAsFixed(1)}%']).toList();
+
+    List<String> Function(List<List<String>>) calculadorBasicoTotales = (filas) {
+      int sumTotal = 0;
+      for (var f in filas) { sumTotal += int.parse(f[1]); }
+      return ['TOTALES', '$sumTotal', '100%'];
+    };
+
+    Widget tablaAreas = _buildTablaSortable(
+        titulo: 'Áreas de Ocurrencia',
+        headers: ['ÁREA', 'TOTAL', '% GRAL'],
+        minWidths: [4, 2, 2],
+        filasIniciales: filasAr,
+        height: 420,
+        mostrarTotal: true,
+        calcularTotales: calculadorBasicoTotales
+    );
+
+    Widget tablaOrigen = _buildTablaSortable(
+        titulo: 'Origen del OPM',
+        headers: ['ORIGEN OPM', 'TOTAL', '% GRAL'],
+        minWidths: [4, 2, 2],
+        filasIniciales: filasOr,
+        height: 420,
+        mostrarTotal: true,
+        calcularTotales: calculadorBasicoTotales
+    );
+
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: tablaAreas),
+          const SizedBox(width: 24),
+          Expanded(child: tablaOrigen),
+        ],
+      );
+    } else {
+      return Column(
+        children: [
+          tablaAreas,
+          const SizedBox(height: 24),
+          tablaOrigen,
+        ],
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 📋 FILA: TABLAS PRINCIPALES CON ORDENAMIENTO (SUPERVISORES Y OPERADORES)
+  // ---------------------------------------------------------------------------
+  Widget _buildFilaTablasPrincipales(BuildContext context, List<Map<String, dynamic>> datos) {
+    bool isWide = MediaQuery.of(context).size.width > 1100;
 
     Set<String> eventosSet = {};
     for(var d in datos) {
@@ -1011,10 +1401,10 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       DateTime fecha = d['fecha_dt'] as DateTime;
       if (fecha.year == anioObjetivo) {
         String sup = d['supervisor']?.toString().trim() ?? 'SIN SUPERVISOR';
-        String op = d['nombre']?.toString().trim() ?? 'SIN NOMBRE';
+        String op = d['nombre']?.toString().trim() ?? 'SIN ASIGNAR';
 
         if (sup.isEmpty) sup = 'SIN SUPERVISOR';
-        if (op.isEmpty) op = 'SIN NOMBRE';
+        if (op.isEmpty) op = 'SIN ASIGNAR';
 
         supervisorTotalAno[sup] = (supervisorTotalAno[sup] ?? 0) + 1;
         operadorTotalAno[op] = (operadorTotalAno[op] ?? 0) + 1;
@@ -1037,7 +1427,11 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       supTotal[sup] = (supTotal[sup] ?? 0) + 1;
     }
 
-    var supActivos = supTotal.keys.toList();
+    var supActivos = supTotal.keys.where((sup) {
+      String upper = sup.toUpperCase();
+      return upper != 'SIN SUPERVISOR' && upper != 'SIN ASIGNAR' && upper != 'SIN NOMBRE';
+    }).toList();
+
     List<List<String>> filasSup = supActivos.map((sup) {
       return [
         sup,
@@ -1076,8 +1470,8 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
     Map<String, int> opTotal = {};
 
     for (var d in datos) {
-      String op = d['nombre']?.toString().trim() ?? 'SIN NOMBRE';
-      if (op.isEmpty) op = 'SIN NOMBRE';
+      String op = d['nombre']?.toString().trim() ?? 'SIN ASIGNAR';
+      if (op.isEmpty) op = 'SIN ASIGNAR';
       String ev = _normalizarEvento(d['evento']?.toString() ?? '');
 
       if (!opData.containsKey(op)) {
@@ -1088,7 +1482,11 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
       opTotal[op] = (opTotal[op] ?? 0) + 1;
     }
 
-    var opActivos = opTotal.keys.toList();
+    var opActivos = opTotal.keys.where((op) {
+      String upper = op.toUpperCase();
+      return upper != 'SIN ASIGNAR' && upper != 'SIN NOMBRE' && upper != 'SIN SUPERVISOR';
+    }).toList();
+
     List<List<String>> filasOp = opActivos.map((op) {
       return [
         op,
@@ -1129,79 +1527,15 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
           ? Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(flex: 3, child: tablaTurno),
+          Expanded(flex: 1, child: tablaSupervisores),
           const SizedBox(width: 24),
-          Expanded(flex: 6, child: tablaSupervisores),
-          const SizedBox(width: 24),
-          Expanded(flex: 7, child: tablaOperadores)
+          Expanded(flex: 1, child: tablaOperadores)
         ],
       )
           : Column(
         children: [
-          tablaTurno, const SizedBox(height: 24),
           tablaSupervisores, const SizedBox(height: 24),
           tablaOperadores
-        ],
-      ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // 📋 FILA 3: TABLAS SECUNDARIAS
-  // ---------------------------------------------------------------------------
-  Widget _buildFilaTablasSecundarias(BuildContext context, List<Map<String, dynamic>> datos) {
-    bool isWide = MediaQuery.of(context).size.width > 1100;
-    int total = datos.isEmpty ? 1 : datos.length;
-
-    Map<String, int> conteoEventos = {};
-    for(var d in datos) {
-      String ev = _normalizarEvento(d['evento']?.toString() ?? 'SIN EVENTO');
-      conteoEventos[ev] = (conteoEventos[ev] ?? 0) + 1;
-    }
-    List<List<String>> filasEv = conteoEventos.keys.map((e) => [e, conteoEventos[e].toString(), '${((conteoEventos[e]!/total)*100).toStringAsFixed(1)}%']).toList();
-
-    Map<String, int> conteoAreas = {};
-    for(var d in datos) {
-      String ar = d['area']?.toString().trim() ?? 'SIN ÁREA';
-      if(ar.isEmpty) ar = 'SIN ÁREA';
-      conteoAreas[ar] = (conteoAreas[ar] ?? 0) + 1;
-    }
-    List<List<String>> filasAr = conteoAreas.keys.map((a) => [a, conteoAreas[a].toString(), '${((conteoAreas[a]!/total)*100).toStringAsFixed(1)}%']).toList();
-
-    Map<String, int> conteoOrigen = {};
-    for(var d in datos) {
-      String or = d['origen_opm']?.toString().trim() ?? 'SIN ORIGEN';
-      if(or.isEmpty) or = 'SIN ORIGEN';
-      conteoOrigen[or] = (conteoOrigen[or] ?? 0) + 1;
-    }
-    List<List<String>> filasOr = conteoOrigen.keys.map((o) => [o, conteoOrigen[o].toString(), '${((conteoOrigen[o]!/total)*100).toStringAsFixed(1)}%']).toList();
-
-    List<String> Function(List<List<String>>) calculadorBasicoTotales = (filas) {
-      int sumTotal = 0;
-      for (var f in filas) { sumTotal += int.parse(f[1]); }
-      return ['TOTALES', '$sumTotal', '100%'];
-    };
-
-    return SizedBox(
-      width: double.infinity,
-      child: isWide
-          ? Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(flex: 1, child: _buildTablaSortable(titulo: 'Tipos de Evento', headers: ['EVENTO', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasEv, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales)),
-          const SizedBox(width: 24),
-          Expanded(flex: 1, child: _buildTablaSortable(titulo: 'Áreas de Ocurrencia', headers: ['ÁREA', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasAr, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales)),
-          const SizedBox(width: 24),
-          Expanded(flex: 1, child: _buildTablaSortable(titulo: 'Origen del OPM', headers: ['ORIGEN OPM', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasOr, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales))
-        ],
-      )
-          : Column(
-        children: [
-          _buildTablaSortable(titulo: 'Tipos de Evento', headers: ['EVENTO', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasEv, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales),
-          const SizedBox(height: 24),
-          _buildTablaSortable(titulo: 'Áreas de Ocurrencia', headers: ['ÁREA', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasAr, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales),
-          const SizedBox(height: 24),
-          _buildTablaSortable(titulo: 'Origen del OPM', headers: ['ORIGEN OPM', 'TOTAL', '% GRAL'], minWidths: [4, 2, 2], filasIniciales: filasOr, height: 420, mostrarTotal: true, calcularTotales: calculadorBasicoTotales)
         ],
       ),
     );
@@ -1223,7 +1557,7 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
         item['area']?.toString() ?? '',
         item['nombre']?.toString() ?? '',
         item['origen_opm']?.toString() ?? '',
-        _normalizarEvento(item['evento']?.toString() ?? ''), // Aplicamos la abreviatura aquí también
+        _normalizarEvento(item['evento']?.toString() ?? ''),
         item['supervisor']?.toString() ?? '',
       ];
     }).toList();
@@ -1445,15 +1779,24 @@ class _DashboardFmsScreenState extends State<DashboardFmsScreen> {
                             bool isTurnoCol = headers[i] == 'TURNO';
                             bool isAlerta = headers[i] == 'ALERTA';
                             bool isOperador = headers[i] == 'OPERADOR' || headers[i] == 'SUPERVISOR';
+                            bool isTendencia = headers[i] == 'TENDENCIA';
                             bool isFirst = i == 0;
+
+                            Color textColor = isAlerta ? Colors.redAccent : Colors.black87;
+
+                            if (isTendencia) {
+                              if (fila[i].contains('⬇')) textColor = const Color(0xFF059669);
+                              else if (fila[i].contains('⬆')) textColor = const Color(0xFFDC2626);
+                              else textColor = Colors.grey.shade600;
+                            }
 
                             Widget cellContent = Text(
                               fila[i],
                               textAlign: isFirst && isOperador ? TextAlign.left : TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
-                                fontWeight: (isAlerta || isOperador) ? FontWeight.bold : FontWeight.w500,
-                                color: isAlerta ? Colors.redAccent : Colors.black87,
+                                fontWeight: (isAlerta || isOperador || isTendencia) ? FontWeight.bold : FontWeight.w500,
+                                color: textColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             );
