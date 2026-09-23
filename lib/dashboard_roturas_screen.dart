@@ -29,18 +29,18 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   DateTime _fechaDesde = DateTime(2026, 7, 1);
   DateTime _fechaHasta = DateTime(2026, 7, 27);
 
-  // Filtros - Listas de opciones disponibles
+  // Filtros
   List<String> _listaTurnos = [];
   List<String> _listaSupervisores = [];
   List<String> _listaAreas = [];
-  List<String> _listaAtribuibles = ['ATRIBUIBLE', 'NO ATRIBUIBLE'];
+  List<String> _listaAtribuibles = ['Comportamiento', 'Condición'];
   List<String> _listaTipos = [];
   List<String> _listaOpms = [];
   List<String> _listaCausales = [];
   List<String> _listaEscenarios = [];
   List<String> _listaZonas = [];
+  List<String> _listaWqi = [];
 
-  // Filtros - Selecciones actuales (Múltiple)
   List<String> _turnosSel = [];
   List<String> _supervisoresSel = [];
   List<String> _areasSel = [];
@@ -50,6 +50,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   List<String> _causalesSel = [];
   List<String> _escenariosSel = [];
   List<String> _zonasSel = [];
+  List<String> _wqiSel = [];
 
   final GlobalKey _capturaKey = GlobalKey();
 
@@ -74,13 +75,9 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
     try {
       final urlSinCache = '$_apiUrl?_t=${DateTime.now().millisecondsSinceEpoch}';
-
       final response = await http.get(
         Uri.parse(urlSinCache),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': _apiKey,
-        },
+        headers: {'Content-Type': 'application/json', 'x-api-key': _apiKey},
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
@@ -88,15 +85,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         final List<dynamic> datosRaw = body['data'] ?? [];
 
         final List<Map<String, dynamic>> datosProcesados = [];
-
-        final Set<String> turnos = {};
-        final Set<String> supervisores = {};
-        final Set<String> areas = {};
-        final Set<String> tipos = {};
-        final Set<String> opms = {};
-        final Set<String> causales = {};
-        final Set<String> escenarios = {};
-        final Set<String> zonas = {};
+        final Set<String> turnos = {}, supervisores = {}, areas = {}, tipos = {}, opms = {}, causales = {}, escenarios = {}, zonas = {}, wqis = {};
 
         for (var fila in datosRaw) {
           if (fila is Map) {
@@ -112,6 +101,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             String? causal = mapa['causal']?.toString();
             String? escenario = mapa['escenario']?.toString();
             String? zona = mapa['zona']?.toString();
+            String? wqi = mapa['wqi']?.toString();
 
             if (t != null && t.trim().isNotEmpty) turnos.add(t.trim());
             if (sup != null && sup.trim().isNotEmpty) supervisores.add(sup.trim());
@@ -121,12 +111,12 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             if (causal != null && causal.trim().isNotEmpty && causal.toUpperCase() != 'NULL') causales.add(causal.trim());
             if (escenario != null && escenario.trim().isNotEmpty && escenario.toUpperCase() != 'NULL') escenarios.add(escenario.trim());
             if (zona != null && zona.trim().isNotEmpty && zona.toUpperCase() != 'NULL') zonas.add(zona.trim());
+            if (wqi != null && wqi.trim().isNotEmpty && wqi.toUpperCase() != 'NULL') wqis.add(wqi.trim());
           }
         }
 
         setState(() {
           _todosLosReportes = datosProcesados;
-
           _listaTurnos = turnos.toList()..sort();
           _listaSupervisores = supervisores.toList()..sort();
           _listaAreas = areas.toList()..sort();
@@ -135,8 +125,8 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
           _listaCausales = causales.toList()..sort();
           _listaEscenarios = escenarios.toList()..sort();
           _listaZonas = zonas.toList()..sort();
+          _listaWqi = wqis.toList()..sort();
 
-          // Inicializar filtros con todas las opciones seleccionadas por defecto
           _turnosSel = List.from(_listaTurnos);
           _supervisoresSel = List.from(_listaSupervisores);
           _areasSel = List.from(_listaAreas);
@@ -146,6 +136,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
           _causalesSel = List.from(_listaCausales);
           _escenariosSel = List.from(_listaEscenarios);
           _zonasSel = List.from(_listaZonas);
+          _wqiSel = List.from(_listaWqi);
 
           if (_todosLosReportes.isNotEmpty) {
             List<DateTime> fechas = [];
@@ -163,7 +154,6 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
               _fechaHasta = fechas.last;
             }
           }
-
           _aplicarFiltros();
           _cargando = false;
         });
@@ -199,39 +189,47 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
           if (fSin.isBefore(dSin) || fSin.isAfter(hSin)) return false;
         }
 
-        String turnoRow = row['turno']?.toString() ?? '';
-        String supRow = row['supervisor']?.toString() ?? '';
-        String areaRow = row['area']?.toString() ?? '';
-        String tipoRow = row['tipo_material_2']?.toString() ?? row['tipo_material']?.toString() ?? '';
-        String opmRow = row['personal']?.toString() ?? row['reportante']?.toString() ?? '';
-        String causalRow = row['causal']?.toString() ?? '';
-        String escRow = row['escenario']?.toString() ?? '';
-        String zonaRow = row['zona']?.toString() ?? '';
+        String turnoRow = (row['turno']?.toString() ?? '').trim();
+        String supRow = (row['supervisor']?.toString() ?? '').trim();
+        String areaRow = (row['area']?.toString() ?? '').trim();
+        String tipoRow = (row['tipo_material_2']?.toString() ?? row['tipo_material']?.toString() ?? '').trim();
+        String opmRow = (row['personal']?.toString() ?? row['reportante']?.toString() ?? '').trim();
+        String causalRow = (row['causal']?.toString() ?? '').trim();
+        String escRow = (row['escenario']?.toString() ?? '').trim();
+        String zonaRow = (row['zona']?.toString() ?? '').trim();
+        String wqiRow = (row['wqi']?.toString() ?? '').trim();
 
-        if (_turnosSel.isNotEmpty && !(_turnosSel.contains(turnoRow))) return false;
-        if (_supervisoresSel.isNotEmpty && !(_supervisoresSel.contains(supRow))) return false;
-        if (_areasSel.isNotEmpty && !(_areasSel.contains(areaRow))) return false;
-        if (_tiposSel.isNotEmpty && !(_tiposSel.contains(tipoRow))) return false;
-        if (_opmsSel.isNotEmpty && !(_opmsSel.contains(opmRow))) return false;
-        if (_causalesSel.isNotEmpty && !(_causalesSel.contains(causalRow))) return false;
-        if (_escenariosSel.isNotEmpty && !(_escenariosSel.contains(escRow))) return false;
-        if (_zonasSel.isNotEmpty && !(_zonasSel.contains(zonaRow))) return false;
+        if (_turnosSel.isEmpty || (_turnosSel.length != _listaTurnos.length && !_turnosSel.contains(turnoRow))) return false;
+        if (_supervisoresSel.isEmpty || (_supervisoresSel.length != _listaSupervisores.length && !_supervisoresSel.contains(supRow))) return false;
+        if (_areasSel.isEmpty || (_areasAreasSelLengthCheck(_areasSel))) return false;
+        if (_tiposSel.isEmpty || (_tiposSel.length != _listaTipos.length && !_tiposSel.contains(tipoRow))) return false;
+        if (_opmsSel.isEmpty || (_opmsSel.length != _listaOpms.length && !_opmsSel.contains(opmRow))) return false;
+        if (_causalesSel.isEmpty || (_causalesSel.length != _listaCausales.length && !_causalesSel.contains(causalRow))) return false;
+        if (_escenariosSel.isEmpty || (_escenariosSel.length != _listaEscenarios.length && !_escenariosSel.contains(escRow))) return false;
+        if (_zonasSel.isEmpty || (_zonasSel.length != _listaZonas.length && !_zonasSel.contains(zonaRow))) return false;
+        if (_wqiSel.isEmpty || (_wqiSel.length != _listaWqi.length && !_wqiSel.contains(wqiRow))) return false;
 
-        if (_atribuiblesSel.isNotEmpty) {
+        if (_atribuiblesSel.isEmpty) return false;
+        if (_atribuiblesSel.length != _listaAtribuibles.length) {
           String at = (row['atribuible']?.toString() ?? '').toUpperCase();
-          bool esNo = at.contains('NO');
-          bool esAtr = at.contains('ATRIBUIBLE') && !esNo;
+
+          bool esCondicion = at.contains('NO') || at.contains('CONDICI');
+          bool esComportamiento = (at.contains('ATRIBUIBLE') && !at.contains('NO')) || at.contains('COMPORTAMIENTO');
 
           bool pasaFiltro = false;
-          if (_atribuiblesSel.contains('NO ATRIBUIBLE') && esNo) pasaFiltro = true;
-          if (_atribuiblesSel.contains('ATRIBUIBLE') && esAtr) pasaFiltro = true;
+          if (_atribuiblesSel.contains('Condición') && esCondicion) pasaFiltro = true;
+          if (_atribuiblesSel.contains('Comportamiento') && esComportamiento) pasaFiltro = true;
 
-          if (!pasaFiltro && (esNo || esAtr)) return false;
+          if (!pasaFiltro) return false;
         }
 
         return true;
       }).toList();
     });
+  }
+
+  bool _areasAreasSelLengthCheck(List<String> sel) {
+    return sel.length != _listaAreas.length && !sel.contains('');
   }
 
   Future<void> _tomarCapturaFoto() async {
@@ -243,7 +241,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
       final blob = html.Blob([pngBytes]);
       final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.AnchorElement(href: url)
+      html.AnchorElement(href: url)
         ..setAttribute("download", "Reporte_Dashboard_Roturas.png")
         ..click();
       html.Url.revokeObjectUrl(url);
@@ -253,9 +251,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   }
 
   void _activarModoTV() {
-    if (widget.onToggleSidebar != null) {
-      widget.onToggleSidebar!();
-    }
+    if (widget.onToggleSidebar != null) widget.onToggleSidebar!();
     if (html.document.fullscreenElement == null) {
       html.document.documentElement?.requestFullscreen();
     } else {
@@ -265,10 +261,9 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
   void _descargarExcel() {
     if (_reportesFiltrados.isEmpty) return;
-
     StringBuffer sb = StringBuffer();
     sb.write('\uFEFF');
-    sb.writeln("FECHA;SUPERVISOR;PERSONAL INVOLUCRADO;ZONA;UBICACION;SKU;CANTIDAD;HL TOTAL;CAUSAL;OBSERVACION;CONCILIADOR;PRECIO BAJA TOTAL;PRECIO BAJA FULL PRICE");
+    sb.writeln("FECHA;SUPERVISOR;PERSONAL INVOLUCRADO;ZONA;UBICACION;SKU;CANTIDAD;HL TOTAL;CAUSAL;WQI;OBSERVACION;CONCILIADOR;PRECIO BAJA TOTAL;PRECIO BAJA FULL PRICE");
 
     for (var r in _reportesFiltrados) {
       String fecha = (r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString() ?? '').split('T')[0];
@@ -280,187 +275,23 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
       String cantidad = r['cantidad']?.toString() ?? '0';
       double hlTotal = _parseHl(r['hl_total'] ?? r['hl']);
       String causal = (r['causal']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
+      String wqi = (r['wqi']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
       String obs = (r['descripcion']?.toString() ?? r['observacion']?.toString() ?? 'Sin observación').replaceAll(';', ',').replaceAll('\n', ' ');
       String conciliador = (r['conciliador']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
 
       double costoBaja = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double costoFull = double.tryParse(r['costo_total_full_price']?.toString() ?? '0') ?? 0;
 
-      sb.writeln("$fecha;$supervisor;$personal;$zona;$ubicacion;$sku;$cantidad;${hlTotal.toStringAsFixed(3)};$causal;$obs;$conciliador;${costoBaja.toStringAsFixed(0)};${costoFull.toStringAsFixed(0)}");
+      sb.writeln("$fecha;$supervisor;$personal;$zona;$ubicacion;$sku;$cantidad;${hlTotal.toStringAsFixed(3)};$causal;$wqi;$obs;$conciliador;${costoBaja.toStringAsFixed(0)};${costoFull.toStringAsFixed(0)}");
     }
 
     final bytes = utf8.encode(sb.toString());
     final blob = html.Blob([bytes], 'text/csv;charset=utf-8');
     final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
+    html.AnchorElement(href: url)
       ..setAttribute("download", "Reporte_Roturas_Tocancipa.csv")
       ..click();
     html.Url.revokeObjectUrl(url);
-  }
-
-  // ===========================================================================
-  // 📂 MOTOR DE EVIDENCIAS Y PLANES DE ACCIÓN (INVESTIGACION)
-  // ===========================================================================
-
-  Widget _buildBotonEvidenciaInvestigacion(Map<String, dynamic> filaBase) {
-    String inv = filaBase['investigacion']?.toString() ?? '';
-    bool tieneEvidencia = inv.isNotEmpty && inv.toLowerCase() != 'null' && inv != '[NULL]';
-
-    if (tieneEvidencia) {
-      return InkWell(
-        onTap: () {
-          String linkFinal = inv;
-          if (!linkFinal.startsWith('http')) {
-            linkFinal = 'https://plantatocancipa.site/uploads/investigacion/$inv';
-          }
-          if (linkFinal.toLowerCase().endsWith('.pdf')) {
-            html.window.open(linkFinal, '_blank');
-          } else {
-            _mostrarImagenDialog(linkFinal, 'Evidencia de Acción / FMS');
-          }
-        },
-        child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            decoration: BoxDecoration(color: Colors.green.shade50, border: Border.all(color: Colors.green.shade400), borderRadius: BorderRadius.circular(4)),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 10),
-                SizedBox(width: 4),
-                Text('Ver', style: TextStyle(fontSize: 8, color: Colors.green, fontWeight: FontWeight.bold)),
-              ],
-            )
-        ),
-      );
-    } else {
-      return InkWell(
-        onTap: () => _seleccionarYSubirEvidencia(filaBase),
-        child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            decoration: BoxDecoration(color: Colors.red.shade50, border: Border.all(color: Colors.red.shade400), borderRadius: BorderRadius.circular(4)),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.close_rounded, color: Colors.red, size: 10),
-                SizedBox(width: 4),
-                Text('Cargar', style: TextStyle(fontSize: 8, color: Colors.red, fontWeight: FontWeight.bold)),
-              ],
-            )
-        ),
-      );
-    }
-  }
-
-  void _seleccionarYSubirEvidencia(Map<String, dynamic> filaBase) {
-    final html.FileUploadInputElement uploadInput = html.FileUploadInputElement();
-    uploadInput.accept = '.pdf, image/jpeg, image/png';
-    uploadInput.click();
-
-    uploadInput.onChange.listen((e) {
-      final files = uploadInput.files;
-      if (files != null && files.isNotEmpty) {
-        final file = files[0];
-        setState(() {
-          filaBase['investigacion'] = 'https://plantatocancipa.site/uploads/simulacion_${file.name}';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Evidencia cargada exitosamente: ${file.name}'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            )
-        );
-      }
-    });
-  }
-
-  Widget _buildTablaEventosCriticos() {
-    var filtrados = _reportesFiltrados.where((r) {
-      String personal = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
-      String pUpper = personal.trim().toUpperCase();
-      if (pUpper == 'NO APLICA' || pUpper == 'N/A' || pUpper == 'NULL' || pUpper.isEmpty) {
-        return false;
-      }
-      double cant = double.tryParse(r['cantidad']?.toString() ?? '0') ?? 0;
-      return cant >= 150;
-    }).toList();
-
-    filtrados.sort((a,b) => (b['fecha_evento']?.toString() ?? '').compareTo(a['fecha_evento']?.toString() ?? ''));
-
-    return _buildCardTablaAction(
-        titulo: 'Plan de Acción - Críticos (≥ 150 und por evento)',
-        columnas: const ['FECHA', 'PERSONAL', 'ROTURA', 'HL TOTAL', 'ACCIÓN', 'EVIDENCIA'],
-        filas: filtrados.map((e) {
-          String rawF = e['fecha_evento']?.toString() ?? e['timestamp_registro']?.toString() ?? '';
-          String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
-          String personal = e['personal']?.toString() ?? e['reportante']?.toString() ?? 'N/A';
-          double cant = double.tryParse(e['cantidad']?.toString() ?? '0') ?? 0;
-          double hlVal = _parseHl(e['hl_total'] ?? e['hl']);
-
-          String accion = cant >= 350 ? 'Realizar Investigación' : 'Realizar 5WHY';
-          Color cColor = cant >= 350 ? Colors.red : Colors.orange.shade800;
-
-          return [
-            Text(fecha, style: const TextStyle(fontSize: 9)),
-            Text(personal, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-            Text('${cant.toInt()}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: cColor)),
-            Text(hlVal.toStringAsFixed(3), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.teal)),
-            Text(accion, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: cColor)),
-            _buildBotonEvidenciaInvestigacion(e),
-          ];
-        }).toList()
-    );
-  }
-
-  Widget _buildTablaReincidencias() {
-    Map<String, List<Map<String, dynamic>>> agrupados = {};
-    for (var r in _reportesFiltrados) {
-      String p = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
-      String pUpper = p.trim().toUpperCase();
-      if (pUpper.isNotEmpty && pUpper != 'NULL' && pUpper != 'N/A' && pUpper != 'NO APLICA') {
-        agrupados.putIfAbsent(pUpper, () => []).add(r);
-      }
-    }
-
-    var reincidentes = agrupados.entries.where((e) => e.value.length >= 2).toList();
-    reincidentes.sort((a, b) => b.value.length.compareTo(a.value.length));
-
-    return _buildCardTablaAction(
-        titulo: 'Plan de Acción - Reincidencias',
-        columnas: const ['FECHA', 'PERSONAL', 'REINCIDENCIAS', 'HL TOTAL', 'ACCIÓN', 'EVIDENCIA'],
-        filas: reincidentes.map((e) {
-          var eventos = e.value;
-          eventos.sort((a, b) => (b['fecha_evento']?.toString() ?? '').compareTo(a['fecha_evento']?.toString() ?? ''));
-          var ultimoEvento = eventos.first;
-
-          String rawF = ultimoEvento['fecha_evento']?.toString() ?? ultimoEvento['timestamp_registro']?.toString() ?? '';
-          String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
-          int cantidadReincidencias = eventos.length;
-          double hlAcumulado = eventos.fold(0.0, (sum, item) => sum + _parseHl(item['hl_total'] ?? item['hl']));
-
-          String accion;
-          Color aColor;
-          if (cantidadReincidencias == 2) {
-            accion = 'Abordaje';
-            aColor = Colors.orange.shade800;
-          } else if (cantidadReincidencias == 3) {
-            accion = 'Entrenamiento y llamado\nde atención';
-            aColor = Colors.redAccent;
-          } else {
-            accion = 'Comité de FMS';
-            aColor = Colors.red.shade900;
-          }
-
-          return [
-            Text(fecha, style: const TextStyle(fontSize: 9)),
-            Text(e.key, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
-            Text('$cantidadReincidencias', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-            Text(hlAcumulado.toStringAsFixed(3), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.teal)),
-            Text(accion, style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: aColor)),
-            _buildBotonEvidenciaInvestigacion(ultimoEvento),
-          ];
-        }).toList()
-    );
   }
 
   // ===========================================================================
@@ -471,29 +302,29 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   Widget build(BuildContext context) {
     if (_cargando) {
       return const Scaffold(
-        backgroundColor: Color(0xFFF1F3F9),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFFE65100))),
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFFF36F21))),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F9),
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(18.0),
+        padding: const EdgeInsets.all(20.0),
         child: RepaintBoundary(
           key: _capturaKey,
           child: Container(
-            color: const Color(0xFFF1F3F9),
+            color: const Color(0xFFF8FAFC),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (_mensajeError != null) _buildBannerError(),
 
                 _buildBarraFiltros(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 _buildTarjetasKPI(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 _buildCardBase(
                   titulo: 'Evolución Diaria de Roturas (Cantidades)',
@@ -506,73 +337,62 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _buildDonaTipo()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildDonaAtribuible()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildDonaTopCausales()),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
-                // 🌟 NUEVA FILA DE TABLAS ZONA y TIPO MATERIAL
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _buildTablaZona()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildTablaTipoMaterial()),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _buildTablaUbicacion()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildTablaOpmDinero()),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _buildTablaTopSkus()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildTablaEscenario()),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: _buildTablaSupervisor()),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(child: _buildTablaTurno()),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _buildTablaEventosCriticos()),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildTablaReincidencias()),
-                  ],
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 _buildTablaDetalleCompleto(),
-                const SizedBox(height: 30),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -583,39 +403,41 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
   Widget _buildBarraFiltros() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 10,
+        spacing: 10,
+        runSpacing: 12,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _buildSelectorFecha('DESDE', _fechaDesde, (d) => setState(() => _fechaDesde = d)),
           _buildSelectorFecha('HASTA', _fechaHasta, (d) => setState(() => _fechaHasta = d)),
-
           _buildMultiSelect('TURNO', _listaTurnos, _turnosSel, (sel) => setState(() => _turnosSel = sel)),
           _buildMultiSelect('SUPERVISOR', _listaSupervisores, _supervisoresSel, (sel) => setState(() => _supervisoresSel = sel)),
           _buildMultiSelect('ÁREA', _listaAreas, _areasSel, (sel) => setState(() => _areasSel = sel)),
-          _buildMultiSelect('ATRIBUIBLE', _listaAtribuibles, _atribuiblesSel, (sel) => setState(() => _atribuiblesSel = sel)),
+          _buildMultiSelect('CLASIFICACIÓN', _listaAtribuibles, _atribuiblesSel, (sel) => setState(() => _atribuiblesSel = sel)),
           _buildMultiSelect('TIPO MAT.', _listaTipos, _tiposSel, (sel) => setState(() => _tiposSel = sel)),
           _buildMultiSelect('OPM', _listaOpms, _opmsSel, (sel) => setState(() => _opmsSel = sel)),
           _buildMultiSelect('CAUSAL', _listaCausales, _causalesSel, (sel) => setState(() => _causalesSel = sel)),
+          _buildMultiSelect('WQI', _listaWqi, _wqiSel, (sel) => setState(() => _wqiSel = sel)),
           _buildMultiSelect('ESCENARIO', _listaEscenarios, _escenariosSel, (sel) => setState(() => _escenariosSel = sel)),
           _buildMultiSelect('ZONA', _listaZonas, _zonasSel, (sel) => setState(() => _zonasSel = sel)),
 
           ElevatedButton.icon(
             onPressed: _aplicarFiltros,
             icon: const Icon(Icons.filter_alt_rounded, size: 14),
-            label: const Text('FILTRAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            label: const Text('FILTRAR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF36F21),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
           ),
           ElevatedButton.icon(
@@ -623,10 +445,11 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             icon: const Icon(Icons.camera_alt, size: 14),
             label: const Text('FOTO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF455A64),
+              backgroundColor: const Color(0xFF64748B),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
           ),
           ElevatedButton.icon(
@@ -634,10 +457,11 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             icon: const Icon(Icons.tv_rounded, size: 14),
             label: const Text('TV', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A2138),
+              backgroundColor: const Color(0xFF0F172A),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
           ),
         ],
@@ -649,33 +473,26 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 3),
+        Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+        const SizedBox(height: 4),
         InkWell(
           onTap: () async {
-            final p = await showDatePicker(
-              context: context,
-              initialDate: fecha,
-              firstDate: DateTime(2020),
-              lastDate: DateTime(2100),
-            );
+            final p = await showDatePicker(context: context, initialDate: fecha, firstDate: DateTime(2020), lastDate: DateTime(2100));
             if (p != null) onSelect(p);
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
               border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(5),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.grey),
+                Text('${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                const SizedBox(width: 6),
+                const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF94A3B8)),
               ],
             ),
           ),
@@ -684,22 +501,13 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  // 🌟 NUEVO WIDGET PARA FILTROS MULTIPLE SELECCIÓN (CHECKBOX)
   Widget _buildMultiSelect(String label, List<String> opciones, List<String> seleccionados, Function(List<String>) onChanged) {
-    String textLabel;
-    if (seleccionados.length == opciones.length) {
-      textLabel = 'Todos';
-    } else if (seleccionados.isEmpty) {
-      textLabel = 'Ninguno';
-    } else {
-      textLabel = '${seleccionados.length} selecc.';
-    }
-
+    String textLabel = seleccionados.length == opciones.length ? 'Todos' : seleccionados.isEmpty ? 'Ninguno' : '${seleccionados.length} selecc.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 3),
+        Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+        const SizedBox(height: 4),
         InkWell(
           onTap: () async {
             List<String> tempSel = List.from(seleccionados);
@@ -709,28 +517,18 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                   return StatefulBuilder(
                       builder: (context, setStateSB) {
                         bool todosSeleccionados = tempSel.length == opciones.length;
-
                         return AlertDialog(
                           title: Text('Filtrar $label', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                           contentPadding: const EdgeInsets.only(top: 10),
                           content: SizedBox(
-                            width: 300,
-                            height: 400,
+                            width: 300, height: 400,
                             child: Column(
                               children: [
                                 CheckboxListTile(
                                     title: const Text('Seleccionar Todos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                                     value: todosSeleccionados,
                                     activeColor: const Color(0xFFF36F21),
-                                    onChanged: (v) {
-                                      setStateSB(() {
-                                        if (v == true) {
-                                          tempSel = List.from(opciones);
-                                        } else {
-                                          tempSel.clear();
-                                        }
-                                      });
-                                    }
+                                    onChanged: (v) => setStateSB(() => v == true ? tempSel = List.from(opciones) : tempSel.clear())
                                 ),
                                 const Divider(height: 1),
                                 Expanded(
@@ -738,22 +536,13 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                                     itemCount: opciones.length,
                                     itemBuilder: (context, index) {
                                       String op = opciones[index];
-                                      bool isSel = tempSel.contains(op);
                                       return CheckboxListTile(
                                         dense: true,
                                         controlAffinity: ListTileControlAffinity.leading,
                                         activeColor: const Color(0xFFF36F21),
                                         title: Text(op, style: const TextStyle(fontSize: 11)),
-                                        value: isSel,
-                                        onChanged: (v) {
-                                          setStateSB(() {
-                                            if (v == true) {
-                                              tempSel.add(op);
-                                            } else {
-                                              tempSel.remove(op);
-                                            }
-                                          });
-                                        },
+                                        value: tempSel.contains(op),
+                                        onChanged: (v) => setStateSB(() => v == true ? tempSel.add(op) : tempSel.remove(op)),
                                       );
                                     },
                                   ),
@@ -762,16 +551,10 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                             ),
                           ),
                           actions: [
-                            TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
-                            ),
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
                             ElevatedButton(
                                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF36F21), foregroundColor: Colors.white),
-                                onPressed: () {
-                                  Navigator.pop(ctx);
-                                  onChanged(tempSel);
-                                },
+                                onPressed: () { Navigator.pop(ctx); onChanged(tempSel); },
                                 child: const Text('Aplicar')
                             )
                           ],
@@ -782,20 +565,20 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
             );
           },
           child: Container(
-            constraints: const BoxConstraints(minWidth: 90),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            constraints: const BoxConstraints(minWidth: 100),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(5),
               color: Colors.white,
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(textLabel, style: const TextStyle(fontSize: 11, color: Colors.black87)),
-                const SizedBox(width: 4),
-                const Icon(Icons.arrow_drop_down, size: 14, color: Colors.grey),
+                Text(textLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w500)),
+                const SizedBox(width: 6),
+                const Icon(Icons.arrow_drop_down, size: 14, color: Color(0xFF94A3B8)),
               ],
             ),
           ),
@@ -806,10 +589,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
   Widget _buildTarjetasKPI() {
     int totalEventos = _reportesFiltrados.length;
-    double totalUnidades = 0;
-    double totalHl = 0;
-    double costoTotalBaja = 0;
-    double costoTotalFullPrice = 0;
+    double totalUnidades = 0, totalHl = 0, costoTotalBaja = 0, costoTotalFullPrice = 0;
 
     for (var r in _reportesFiltrados) {
       totalUnidades += double.tryParse(r['cantidad']?.toString() ?? '0') ?? 0;
@@ -821,80 +601,100 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     return Row(
       children: [
         Expanded(child: _buildKPICard('TOTAL EVENTOS', '$totalEventos', const Color(0xFFF36F21))),
-        const SizedBox(width: 10),
+        const SizedBox(width: 14),
         Expanded(child: _buildKPICard('TOTAL UNIDADES ROTAS', '${totalUnidades.toInt()}', const Color(0xFFF36F21))),
-        const SizedBox(width: 10),
-        Expanded(child: _buildKPICard('HL TOTAL', totalHl.toStringAsFixed(2), const Color(0xFF00796B))),
-        const SizedBox(width: 10),
-        Expanded(child: _buildKPICard('COSTO TOTAL BAJA', '\$ ${_formatearMoneda(costoTotalBaja)}', const Color(0xFFD84315))),
-        const SizedBox(width: 10),
-        Expanded(child: _buildKPICard('COSTO TOTAL FULL PRICE', '\$ ${_formatearMoneda(costoTotalFullPrice)}', const Color(0xFF8E24AA))),
+        const SizedBox(width: 14),
+        Expanded(child: _buildKPICard('HL TOTAL', totalHl.toStringAsFixed(2), const Color(0xFF00B4D8))),
+        const SizedBox(width: 14),
+        Expanded(child: _buildKPICard('COSTO TOTAL BAJA', '\$ ${_formatearMoneda(costoTotalBaja)}', const Color(0xFFE63946))),
+        const SizedBox(width: 14),
+        Expanded(child: _buildKPICard('COSTO TOTAL FULL PRICE', '\$ ${_formatearMoneda(costoTotalFullPrice)}', const Color(0xFF7209B7))),
       ],
     );
   }
 
   Widget _buildKPICard(String titulo, String valor, Color colorBorde) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: colorBorde, width: 4)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
-          Text(titulo, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.grey), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: colorBorde.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+            child: Text(titulo, style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: colorBorde, letterSpacing: 0.5), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(height: 10),
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              valor,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black87),
-            ),
+            child: Text(valor, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: -0.5)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDonaTipo() {
-    Map<String, double> mapa = {};
-    for (var r in _reportesFiltrados) {
-      String t = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'Sin Tipo';
-      mapa[t] = (mapa[t] ?? 0) + 1;
-    }
-    return _buildCardBase(
-      titulo: 'Roturas por Tipo (%)',
-      child: SizedBox(
-        height: 190,
-        child: DonutChartWidget(
-          datos: mapa,
-          colores: const [Color(0xFF4285F4), Color(0xFF00C853), Color(0xFFFFB300), Color(0xFFE53935)],
-        ),
+  Widget _buildCardBase({required String titulo, Widget? actionRight, required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text(titulo, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)))),
+              if (actionRight != null) actionRight,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // GRÁFICAS CIRCULARES
+  // ---------------------------------------------------------------------------
+
+  Widget _buildDonaTipo() {
+    Map<String, double> mapa = {};
+    for (var r in _reportesFiltrados) {
+      String t = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'Sin Tipo';
+      if (t.trim().isEmpty || t == 'NULL') t = 'Sin Tipo';
+      mapa[t] = (mapa[t] ?? 0) + 1;
+    }
+    return _buildCardBase(
+      titulo: 'Roturas por Tipo (%)',
+      child: SizedBox(height: 200, child: DonutChartWidget(datos: _agruparTop(mapa, 5), colores: const [Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF64748B)])),
+    );
+  }
+
   Widget _buildDonaAtribuible() {
-    Map<String, double> mapa = {'ATRIBUIBLE': 0, 'NO ATRIBUIBLE': 0};
+    Map<String, double> mapa = {'Comportamiento': 0, 'Condición': 0};
     for (var r in _reportesFiltrados) {
       String at = (r['atribuible']?.toString() ?? '').toUpperCase();
-      if (at.contains('NO')) {
-        mapa['NO ATRIBUIBLE'] = (mapa['NO ATRIBUIBLE'] ?? 0) + 1;
-      } else if (at.contains('ATRIBUIBLE')) {
-        mapa['ATRIBUIBLE'] = (mapa['ATRIBUIBLE'] ?? 0) + 1;
+      if (at.contains('NO') || at.contains('CONDICI')) {
+        mapa['Condición'] = (mapa['Condición'] ?? 0) + 1;
+      } else if (at.contains('ATRIBUIBLE') || at.contains('COMPORTAMIENTO')) {
+        mapa['Comportamiento'] = (mapa['Comportamiento'] ?? 0) + 1;
       }
     }
     return _buildCardBase(
-      titulo: 'Atribuible vs No Atribuible (%)',
-      child: SizedBox(
-        height: 190,
-        child: DonutChartWidget(
-          datos: mapa,
-          colores: const [Color(0xFFEF5350), Color(0xFF546E7A)],
-        ),
-      ),
+      titulo: 'Comportamiento vs Condición (%)',
+      child: SizedBox(height: 200, child: DonutChartWidget(datos: mapa, colores: const [Color(0xFFEF4444), Color(0xFF64748B)])),
     );
   }
 
@@ -902,413 +702,284 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     Map<String, double> mapa = {};
     for (var r in _reportesFiltrados) {
       String c = r['causal']?.toString() ?? 'Otros';
-      if (c.length > 20) c = '${c.substring(0, 18)}...';
+      if (c.trim().isEmpty || c == 'NULL') c = 'Otros';
+      if (c.length > 22) c = '${c.substring(0, 20)}...';
       mapa[c] = (mapa[c] ?? 0) + 1;
     }
     return _buildCardBase(
       titulo: 'Top Causales de Rotura',
-      child: SizedBox(
-        height: 190,
-        child: DonutChartWidget(
-          datos: mapa,
-          colores: const [Color(0xFFF36F21), Color(0xFFE53935), Color(0xFFFFB300), Color(0xFF4285F4), Color(0xFF00C853), Color(0xFFAB47BC)],
-        ),
-      ),
+      child: SizedBox(height: 200, child: DonutChartWidget(datos: _agruparTop(mapa, 5), colores: const [Color(0xFFF36F21), Color(0xFFEF4444), Color(0xFFF59E0B), Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFF8B5CF6), Color(0xFF64748B)])),
     );
   }
 
-  // 🌟 NUEVA TABLA: TIPO MATERIAL 2
-  Widget _buildTablaTipoMaterial() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, double> costos = {};
-    Map<String, Set<String>> reincidencias = {};
+  Map<String, double> _agruparTop(Map<String, double> mapaOriginal, int topN) {
+    var sorted = mapaOriginal.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    Map<String, double> topMapa = {};
+    double otros = 0;
+    for (int i = 0; i < sorted.length; i++) {
+      if (i < topN) topMapa[sorted[i].key] = sorted[i].value;
+      else otros += sorted[i].value;
+    }
+    if (otros > 0) topMapa['Otras'] = otros;
+    return topMapa;
+  }
 
+  // ---------------------------------------------------------------------------
+  // TABLAS INTELIGENTES CON ORDENAMIENTO Y TOTALES
+  // ---------------------------------------------------------------------------
+
+  Widget _buildTablaTipoMaterial() {
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String tm = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'SIN DEFINIR';
+      String k = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'SIN DEFINIR';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[tm] = (conteo[tm] ?? 0) + cant;
-      hlConteo[tm] = (hlConteo[tm] ?? 0) + hlVal;
-      costos[tm] = (costos[tm] ?? 0) + costo;
-      reincidencias.putIfAbsent(tm, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'costo': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      agrupados[k]!['costo'] = (agrupados[k]!['costo'] as double) + costo;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'val': v['costo']}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Tipo Material',
-      columnas: const ['TIPO MATERIAL', 'CANTIDAD', 'TOTAL HL', 'REINCID.', 'VALOR TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(0.9),
-        4: FlexColumnWidth(1.4),
-      },
-      filas: ordenados.map((e) {
-        double val = costos[e.key] ?? 0;
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlTm = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlTm.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'TIPO MATERIAL', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'val', 'label': 'VALOR TOTAL', 'flex': 3, 'type': 'money', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
-  // 🌟 NUEVA TABLA: ZONA
   Widget _buildTablaZona() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, Set<String>> reincidencias = {};
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     double totalGeneral = 0;
-
     for (var r in _reportesFiltrados) {
-      String z = r['zona']?.toString() ?? 'Sin Zona';
+      String k = r['zona']?.toString() ?? 'Sin Zona';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[z] = (conteo[z] ?? 0) + cant;
-      hlConteo[z] = (hlConteo[z] ?? 0) + hlVal;
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
       totalGeneral += cant;
-      reincidencias.putIfAbsent(z, () => {}).add(r['id']?.toString() ?? '');
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'pct': totalGeneral > 0 ? ((v['cant'] as int) / totalGeneral) * 100 : 0.0}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Zona',
-      columnas: const ['ZONA', 'CANTIDAD', 'TOTAL HL', 'REINCID.', '% TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(0.9),
-        4: FlexColumnWidth(1.0),
-      },
-      filas: ordenados.map((e) {
-        double pct = totalGeneral > 0 ? (e.value / totalGeneral) * 100 : 0;
-        int rein = (reincidencias[e.key]?.length ?? 1);
-        double totalHlLoc = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(totalHlLoc.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'ZONA', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'pct', 'label': '% TOTAL', 'flex': 2, 'type': 'pct', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaUbicacion() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, Set<String>> reincidencias = {};
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     double totalGeneral = 0;
-
     for (var r in _reportesFiltrados) {
-      String u = r['ubicacion']?.toString() ?? r['zona']?.toString() ?? 'Sin Ubicación';
+      String k = r['ubicacion']?.toString() ?? r['zona']?.toString() ?? 'Sin Ubicación';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[u] = (conteo[u] ?? 0) + cant;
-      hlConteo[u] = (hlConteo[u] ?? 0) + hlVal;
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
       totalGeneral += cant;
-      reincidencias.putIfAbsent(u, () => {}).add(r['id']?.toString() ?? '');
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'pct': totalGeneral > 0 ? ((v['cant'] as int) / totalGeneral) * 100 : 0.0}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Ubicación',
-      columnas: const ['UBICACIÓN', 'CANTIDAD', 'TOTAL HL', 'REINCIDENCIA', '% TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(1.0),
-        4: FlexColumnWidth(1.0),
-      },
-      filas: ordenados.map((e) {
-        double pct = totalGeneral > 0 ? (e.value / totalGeneral) * 100 : 0;
-        int rein = (reincidencias[e.key]?.length ?? 1);
-        double totalHlLoc = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(totalHlLoc.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'UBICACIÓN', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'pct', 'label': '% TOTAL', 'flex': 2, 'type': 'pct', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaOpmDinero() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, double> costos = {};
-    Map<String, Set<String>> reincidencias = {};
-
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String opm = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'SIN ASIGNAR';
+      String k = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'SIN ASIGNAR';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[opm] = (conteo[opm] ?? 0) + cant;
-      hlConteo[opm] = (hlConteo[opm] ?? 0) + hlVal;
-      costos[opm] = (costos[opm] ?? 0) + costo;
-      reincidencias.putIfAbsent(opm, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'costo': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      agrupados[k]!['costo'] = (agrupados[k]!['costo'] as double) + costo;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'val': v['costo']}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por OPM y Dinero',
-      columnas: const ['OPM', 'ROTURAS', 'TOTAL HL', 'REINCIDENCIA', 'VALOR TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(1.0),
-        4: FlexColumnWidth(1.4),
-      },
-      filas: ordenados.map((e) {
-        double val = costos[e.key] ?? 0;
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlOpm = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlOpm.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'OPM', 'flex': 4, 'type': 'text'},
+        {'key': 'cant', 'label': 'ROTURAS', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'val', 'label': 'VALOR TOTAL', 'flex': 3, 'type': 'money', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaTopSkus() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, double> costos = {};
-    Map<String, Set<String>> reincidencias = {};
-
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String sku = r['sku']?.toString() ?? 'SIN SKU';
+      String k = r['sku']?.toString() ?? 'SIN SKU';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[sku] = (conteo[sku] ?? 0) + cant;
-      hlConteo[sku] = (hlConteo[sku] ?? 0) + hlVal;
-      costos[sku] = (costos[sku] ?? 0) + costo;
-      reincidencias.putIfAbsent(sku, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'costo': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      agrupados[k]!['costo'] = (agrupados[k]!['costo'] as double) + costo;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'val': v['costo']}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Top SKUs con mayor Rotura',
-      columnas: const ['SKU', 'CANTIDAD', 'TOTAL HL', 'REINCIDENCIA', 'VALOR TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(1.0),
-        4: FlexColumnWidth(1.4),
-      },
-      filas: ordenados.map((e) {
-        double val = costos[e.key] ?? 0;
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlSku = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlSku.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'SKU', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'val', 'label': 'VALOR TOTAL', 'flex': 3, 'type': 'money', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaEscenario() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, double> costos = {};
-    Map<String, Set<String>> reincidencias = {};
-
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String esc = r['escenario']?.toString() ?? 'Sin Escenario';
-      if (esc.trim().isEmpty || esc.toUpperCase() == 'NULL') esc = 'Sin Escenario';
-
+      String k = r['escenario']?.toString() ?? 'Sin Escenario';
+      if (k.trim().isEmpty || k.toUpperCase() == 'NULL') k = 'Sin Escenario';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[esc] = (conteo[esc] ?? 0) + cant;
-      hlConteo[esc] = (hlConteo[esc] ?? 0) + hlVal;
-      costos[esc] = (costos[esc] ?? 0) + costo;
-      reincidencias.putIfAbsent(esc, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'costo': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      agrupados[k]!['costo'] = (agrupados[k]!['costo'] as double) + costo;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'val': v['costo']}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Escenario',
-      columnas: const ['ESCENARIO', 'CANTIDAD', 'TOTAL HL', 'REINCIDENCIA', 'VALOR TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(1.0),
-        4: FlexColumnWidth(1.4),
-      },
-      filas: ordenados.map((e) {
-        double val = costos[e.key] ?? 0;
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlEsc = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlEsc.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'ESCENARIO', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'val', 'label': 'VALOR TOTAL', 'flex': 3, 'type': 'money', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaSupervisor() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, double> costos = {};
-    Map<String, Set<String>> reincidencias = {};
-
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String s = r['supervisor']?.toString() ?? 'SIN SUPERVISOR';
+      String k = r['supervisor']?.toString() ?? 'SIN SUPERVISOR';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[s] = (conteo[s] ?? 0) + cant;
-      hlConteo[s] = (hlConteo[s] ?? 0) + hlVal;
-      costos[s] = (costos[s] ?? 0) + costo;
-      reincidencias.putIfAbsent(s, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'costo': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      agrupados[k]!['costo'] = (agrupados[k]!['costo'] as double) + costo;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length, 'val': v['costo']}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Supervisor',
-      columnas: const ['SUPERVISOR', 'CANTIDAD', 'TOTAL HL', 'REINCIDENCIA', 'VALOR TOTAL'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.0),
-        2: FlexColumnWidth(1.2),
-        3: FlexColumnWidth(1.0),
-        4: FlexColumnWidth(1.4),
-      },
-      filas: ordenados.map((e) {
-        double val = costos[e.key] ?? 0;
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlSup = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlSup.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-          Text('\$ ${_formatearMoneda(val)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'SUPERVISOR', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'CANTIDAD', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+        {'key': 'val', 'label': 'VALOR TOTAL', 'flex': 3, 'type': 'money', 'sum': true},
+      ],
+      datos: datos,
     );
   }
 
   Widget _buildTablaTurno() {
-    Map<String, int> conteo = {};
-    Map<String, double> hlConteo = {};
-    Map<String, Set<String>> reincidencias = {};
-
+    List<Map<String, dynamic>> datos = [];
+    Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String t = r['turno']?.toString() ?? 'SIN TURNO';
+      String k = r['turno']?.toString() ?? 'SIN TURNO';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-
-      conteo[t] = (conteo[t] ?? 0) + cant;
-      hlConteo[t] = (hlConteo[t] ?? 0) + hlVal;
-      reincidencias.putIfAbsent(t, () => {}).add(r['id']?.toString() ?? '');
+      agrupados.putIfAbsent(k, () => {'id': k, 'cant': 0, 'hl': 0.0, 'reins': <String>{}});
+      agrupados[k]!['cant'] = (agrupados[k]!['cant'] as int) + cant;
+      agrupados[k]!['hl'] = (agrupados[k]!['hl'] as double) + hlVal;
+      (agrupados[k]!['reins'] as Set<String>).add(r['id']?.toString() ?? '');
     }
+    agrupados.forEach((k, v) => datos.add({'k': k, 'cant': v['cant'], 'hl': v['hl'], 'rein': (v['reins'] as Set).length}));
 
-    var ordenados = conteo.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-
-    return _buildCardTabla(
+    return SmartTableWidget(
       titulo: 'Roturas por Turno',
-      columnas: const ['TURNO', 'ROTURAS', 'TOTAL HL', 'REINCIDENCIAS'],
-      columnWidths: const {
-        0: FlexColumnWidth(2.0),
-        1: FlexColumnWidth(1.2),
-        2: FlexColumnWidth(1.5),
-        3: FlexColumnWidth(1.2),
-      },
-      filas: ordenados.map((e) {
-        int rein = reincidencias[e.key]?.length ?? 1;
-        double hlTur = hlConteo[e.key] ?? 0.0;
-
-        return [
-          Text(e.key, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-          Text('${e.value}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
-          Text(hlTur.toStringAsFixed(2), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.teal)),
-          Text('$rein', style: const TextStyle(fontSize: 10)),
-        ];
-      }).toList(),
+      columnas: const [
+        {'key': 'k', 'label': 'TURNO', 'flex': 3, 'type': 'text'},
+        {'key': 'cant', 'label': 'ROTURAS', 'flex': 2, 'type': 'num', 'sum': true},
+        {'key': 'hl', 'label': 'TOTAL HL', 'flex': 2, 'type': 'hl', 'sum': true},
+        {'key': 'rein', 'label': 'REINCID.', 'flex': 2, 'type': 'num'},
+      ],
+      datos: datos,
     );
   }
 
-  Widget _headerCell(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.grey),
-        textAlign: TextAlign.left,
-      ),
-    );
-  }
-
-  Widget _dataCell(String text, {bool isBold = false, Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 9.5,
-          fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-          color: color ?? Colors.black87,
-          height: 1.3,
-        ),
-        textAlign: TextAlign.left,
-      ),
-    );
-  }
+  // ---------------------------------------------------------------------------
+  // TABLA DE DETALLE COMPLETO
+  // ---------------------------------------------------------------------------
 
   Widget _buildTablaDetalleCompleto() {
+    List<Map<String, dynamic>> columnas = [
+      {'key': 'fecha', 'label': 'FECHA', 'w': 100.0},
+      {'key': 'sup', 'label': 'SUPERVISOR', 'w': 160.0},
+      {'key': 'opm', 'label': 'PERSONAL', 'w': 160.0},
+      {'key': 'zona', 'label': 'ZONA', 'w': 90.0},
+      {'key': 'ub', 'label': 'UBICACIÓN', 'w': 100.0},
+      {'key': 'sku', 'label': 'SKU', 'w': 120.0},
+      {'key': 'cant', 'label': 'CANT.', 'w': 60.0},
+      {'key': 'hl', 'label': 'HL TOTAL', 'w': 80.0},
+      {'key': 'causal', 'label': 'CAUSAL', 'w': 200.0},
+      {'key': 'obs', 'label': 'OBSERVACIÓN', 'w': 250.0},
+      {'key': 'con', 'label': 'CONCILIADOR', 'w': 140.0},
+      {'key': 'pbaja', 'label': 'PRECIO BAJA', 'w': 110.0},
+      {'key': 'pfull', 'label': 'PRECIO FULL', 'w': 110.0},
+      {'key': 'ev', 'label': 'EVIDENCIAS', 'w': 150.0},
+    ];
+
     return _buildCardBase(
       titulo: 'Detalle Completo Roturas',
       actionRight: ElevatedButton.icon(
@@ -1316,124 +987,99 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         icon: const Icon(Icons.download_rounded, size: 14),
         label: const Text('EXCEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green.shade600,
+          backgroundColor: const Color(0xFF10B981),
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          minimumSize: const Size(0, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         ),
       ),
       child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.grey.shade200),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        height: 400,
+        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(8)),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Table(
-            columnWidths: const {
-              0: FlexColumnWidth(1.2),
-              1: FlexColumnWidth(1.5),
-              2: FlexColumnWidth(1.5),
-              3: FlexColumnWidth(1.0),
-              4: FlexColumnWidth(1.2),
-              5: FlexColumnWidth(1.2),
-              6: FlexColumnWidth(0.8),
-              7: FlexColumnWidth(0.9),
-              8: FlexColumnWidth(1.6),
-              9: FlexColumnWidth(2.8),
-              10: FlexColumnWidth(1.2),
-              11: FlexColumnWidth(1.2),
-              12: FlexColumnWidth(1.2),
-              13: FlexColumnWidth(1.5),
-            },
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              TableRow(
-                decoration: const BoxDecoration(
-                    color: Color(0xFFF8F9FA),
-                    border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0)))
-                ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: columnas.fold<double>(0.0, (p, c) => p + (c['w'] as double)),
+              child: Column(
                 children: [
-                  _headerCell('FECHA'),
-                  _headerCell('SUPERVISOR'),
-                  _headerCell('PERSONAL INVOLUCRADO'),
-                  _headerCell('ZONA'),
-                  _headerCell('UBICACIÓN'),
-                  _headerCell('SKU'),
-                  _headerCell('CANTIDAD'),
-                  _headerCell('HL TOTAL'),
-                  _headerCell('CAUSAL'),
-                  _headerCell('OBSERVACIÓN'),
-                  _headerCell('CONCILIADOR'),
-                  _headerCell('PRECIO BAJA TOTAL'),
-                  _headerCell('PRECIO BAJA FULL PRICE'),
-                  _headerCell('EVIDENCIAS'),
+                  Container(
+                    decoration: const BoxDecoration(color: Color(0xFFF8FAFC), border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+                    child: Row(
+                      children: columnas.map((c) => Container(
+                        width: c['w'] as double,
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                        child: Text(c['label'] as String, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xFF475569))),
+                      )).toList(),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: min(100, _reportesFiltrados.length),
+                      itemBuilder: (context, i) {
+                        var r = _reportesFiltrados[i];
+                        String rawF = r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString() ?? '';
+                        String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
+                        int cantidad = double.tryParse(r['cantidad']?.toString() ?? '0')?.toInt() ?? 0;
+                        double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
+                        double costoBaja = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
+                        double costoFull = double.tryParse(r['costo_total_full_price']?.toString() ?? '0') ?? 0;
+
+                        String? urlFirma = r['firma_conciliador']?.toString() ?? r['firma']?.toString() ?? r['evidencia_firma']?.toString() ?? r['url_firma']?.toString();
+                        String? urlEvento = r['evidencia_evento']?.toString();
+                        String? urlCausante = r['evidencia_causante']?.toString() ?? r['evidencia_condicion']?.toString();
+
+                        return Container(
+                          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+                          child: Row(
+                            children: [
+                              _buildFixedCell(columnas[0]['w'] as double, fecha),
+                              _buildFixedCell(columnas[1]['w'] as double, r['supervisor']?.toString() ?? 'N/A'),
+                              _buildFixedCell(columnas[2]['w'] as double, r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A', isBold: true),
+                              _buildFixedCell(columnas[3]['w'] as double, r['zona']?.toString() ?? 'N/A'),
+                              _buildFixedCell(columnas[4]['w'] as double, r['ubicacion']?.toString() ?? 'N/A'),
+                              _buildFixedCell(columnas[5]['w'] as double, r['sku']?.toString() ?? 'N/A', isBold: true),
+                              _buildFixedCell(columnas[6]['w'] as double, '$cantidad', isBold: true, color: Colors.red),
+                              _buildFixedCell(columnas[7]['w'] as double, hlVal.toStringAsFixed(3), isBold: true, color: Colors.teal.shade800),
+                              _buildFixedCell(columnas[8]['w'] as double, r['causal']?.toString() ?? 'N/A'),
+                              _buildFixedCell(columnas[9]['w'] as double, r['descripcion']?.toString() ?? r['observacion']?.toString() ?? 'Sin observación'),
+                              _buildFixedCell(columnas[10]['w'] as double, r['conciliador']?.toString() ?? 'N/A'),
+                              _buildFixedCell(columnas[11]['w'] as double, '\$ ${_formatearMoneda(costoBaja)}', isBold: true, color: Colors.orange.shade800),
+                              _buildFixedCell(columnas[12]['w'] as double, '\$ ${_formatearMoneda(costoFull)}', isBold: true, color: Colors.green),
+                              Container(
+                                width: columnas[13]['w'] as double,
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                child: Wrap(
+                                  spacing: 4, runSpacing: 4,
+                                  children: [
+                                    _buildAccionButton('Ver Firma', Icons.draw_rounded, urlFirma),
+                                    _buildAccionButton('Ver Foto Evento', Icons.broken_image_rounded, urlEvento),
+                                    _buildAccionButton('Ver Foto Causante', Icons.person_search_rounded, urlCausante),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
-              ..._reportesFiltrados.take(100).map((r) {
-                String rawF = r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString() ?? '';
-                String fecha = rawF.isNotEmpty ? rawF.split('T')[0].split(' ')[0] : 'N/A';
-                String supervisor = r['supervisor']?.toString() ?? 'N/A';
-                String personal = r['personal']?.toString() ?? r['reportante']?.toString() ?? 'N/A';
-                String zona = r['zona']?.toString() ?? 'N/A';
-                String ubicacion = r['ubicacion']?.toString() ?? 'N/A';
-                String sku = r['sku']?.toString() ?? 'N/A';
-                int cantidad = double.tryParse(r['cantidad']?.toString() ?? '0')?.toInt() ?? 0;
-                double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
-                String causal = r['causal']?.toString() ?? 'N/A';
-                String obs = r['descripcion']?.toString() ?? r['observacion']?.toString() ?? 'Sin observación';
-                String conciliador = r['conciliador']?.toString() ?? 'N/A';
-
-                double costoBaja = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
-                double costoFull = double.tryParse(r['costo_total_full_price']?.toString() ?? '0') ?? 0;
-
-                String? urlFirma = r['firma_conciliador']?.toString() ?? r['firma']?.toString() ?? r['evidencia_firma']?.toString() ?? r['url_firma']?.toString();
-                String? urlEvento = r['evidencia_evento']?.toString();
-                String? urlCausante = r['evidencia_causante']?.toString() ?? r['evidencia_condicion']?.toString();
-
-                return TableRow(
-                    decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5)))
-                    ),
-                    children: [
-                      _dataCell(fecha),
-                      _dataCell(supervisor),
-                      _dataCell(personal, isBold: true),
-                      _dataCell(zona),
-                      _dataCell(ubicacion),
-                      _dataCell(sku, isBold: true),
-                      _dataCell('$cantidad', isBold: true, color: Colors.red),
-                      _dataCell(hlVal.toStringAsFixed(3), isBold: true, color: Colors.teal.shade800),
-                      _dataCell(causal),
-                      _dataCell(obs),
-                      _dataCell(conciliador),
-                      _dataCell('\$ ${_formatearMoneda(costoBaja)}', isBold: true, color: Colors.orange.shade800),
-                      _dataCell('\$ ${_formatearMoneda(costoFull)}', isBold: true, color: Colors.green),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 2.0),
-                        child: Wrap(
-                          spacing: 2,
-                          runSpacing: 2,
-                          alignment: WrapAlignment.start,
-                          children: [
-                            _buildAccionButton('Ver Firma', Icons.draw_rounded, urlFirma),
-                            _buildAccionButton('Ver Foto Evento', Icons.broken_image_rounded, urlEvento),
-                            _buildAccionButton('Ver Foto Causante', Icons.person_search_rounded, urlCausante),
-                          ],
-                        ),
-                      ),
-                    ]
-                );
-              }),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFixedCell(double width, String text, {bool isBold = false, Color color = const Color(0xFF1E293B)}) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: Text(text, style: TextStyle(fontSize: 10, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, color: color)),
     );
   }
 
@@ -1442,21 +1088,15 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     bool hasUrl = urlLimpia.isNotEmpty && urlLimpia.toLowerCase() != 'null' && urlLimpia != '[NULL]';
 
     return Container(
-      decoration: BoxDecoration(
-        color: hasUrl ? Colors.blue.shade50 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: hasUrl ? Colors.blue.shade200 : Colors.transparent),
-      ),
+      decoration: BoxDecoration(color: hasUrl ? Colors.blue.shade50 : Colors.grey.shade100, borderRadius: BorderRadius.circular(6), border: Border.all(color: hasUrl ? Colors.blue.shade200 : Colors.transparent)),
       child: IconButton(
         icon: Icon(icon, color: hasUrl ? Colors.blue.shade700 : Colors.grey.shade400, size: 14),
         tooltip: tooltip,
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(6),
         constraints: const BoxConstraints(),
         onPressed: hasUrl ? () {
           String linkFinal = urlLimpia;
-          if (!linkFinal.startsWith('http') && !linkFinal.contains('Firma_Registrada')) {
-            linkFinal = 'https://plantatocancipa.site/uploads/firma_conciliador/$linkFinal';
-          }
+          if (!linkFinal.startsWith('http') && !linkFinal.contains('Firma_Registrada')) linkFinal = 'https://plantatocancipa.site/uploads/firma_conciliador/$linkFinal';
           _mostrarImagenDialog(linkFinal, tooltip);
         } : null,
       ),
@@ -1479,23 +1119,13 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
                   ],
                 ),
                 const Divider(),
                 Flexible(
                   child: InteractiveViewer(
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Padding(
-                        padding: EdgeInsets.all(30.0),
-                        child: Text('La firma o imagen no es un enlace válido o está en formato de texto.', style: TextStyle(color: Colors.red)),
-                      ),
-                    ),
+                    child: Image.network(url, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Padding(padding: EdgeInsets.all(30.0), child: Text('La firma o imagen no es un enlace válido o está en formato de texto.', style: TextStyle(color: Colors.red)))),
                   ),
                 ),
               ],
@@ -1506,139 +1136,200 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     );
   }
 
-  Widget _buildCardBase({required String titulo, Widget? actionRight, required Widget child}) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(child: Text(titulo, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87))),
-              if (actionRight != null) actionRight,
-            ],
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCardTabla({
-    required String titulo,
-    required List<String> columnas,
-    required List<List<Widget>> filas,
-    Map<int, TableColumnWidth>? columnWidths,
-  }) {
-    return _buildCardBase(
-      titulo: titulo,
-      child: SizedBox(
-        height: 200,
-        child: SingleChildScrollView(
-          child: Table(
-            columnWidths: columnWidths ?? const {
-              0: FlexColumnWidth(2.0),
-              1: FlexColumnWidth(1.2),
-              2: FlexColumnWidth(1.2),
-              3: FlexColumnWidth(1.4),
-            },
-            children: [
-              TableRow(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1.5))),
-                children: columnas
-                    .map((c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(c, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.grey)),
-                )).toList(),
-              ),
-              ...filas.map((f) => TableRow(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5)))),
-                children: f
-                    .map((w) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: w,
-                )).toList(),
-              )),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCardTablaAction({required String titulo, required List<String> columnas, required List<List<Widget>> filas}) {
-    return _buildCardBase(
-      titulo: titulo,
-      child: SizedBox(
-        height: 220,
-        child: SingleChildScrollView(
-          child: Table(
-            columnWidths: const {
-              0: FlexColumnWidth(1.1),
-              1: FlexColumnWidth(1.4),
-              2: FlexColumnWidth(0.8),
-              3: FlexColumnWidth(0.9),
-              4: FlexColumnWidth(1.7),
-              5: FlexColumnWidth(0.9),
-            },
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              TableRow(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1.5))),
-                children: columnas.map((c) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(c, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.grey)),
-                )).toList(),
-              ),
-              ...filas.map((f) => TableRow(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF5F5F5)))),
-                children: f.map((w) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: w,
-                )).toList(),
-              )),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   String _formatearMoneda(double valor) {
     return valor.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
   }
 
   Widget _buildBannerError() {
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade100,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.amber.shade700),
-      ),
+      width: double.infinity, margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.shade600)),
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(_mensajeError!, style: TextStyle(color: Colors.amber.shade900, fontSize: 11, fontWeight: FontWeight.bold))),
-          InkWell(
-            onTap: _cargarDatosBD,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: Colors.amber.shade900, borderRadius: BorderRadius.circular(4)),
-              child: const Text('REINTENTAR', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-            ),
+          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(_mensajeError!, style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.w600))),
+          ElevatedButton(
+            onPressed: _cargarDatosBD,
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.amber.shade600, foregroundColor: Colors.white, elevation: 0),
+            child: const Text('REINTENTAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
           )
+        ],
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// COMPONENTE: TABLA INTELIGENTE (STICKY HEADER, SORT, TOTALS)
+// ===========================================================================
+class SmartTableWidget extends StatefulWidget {
+  final String titulo;
+  final List<Map<String, dynamic>> columnas;
+  final List<Map<String, dynamic>> datos;
+
+  const SmartTableWidget({super.key, required this.titulo, required this.columnas, required this.datos});
+
+  @override
+  State<SmartTableWidget> createState() => _SmartTableWidgetState();
+}
+
+class _SmartTableWidgetState extends State<SmartTableWidget> {
+  String sortCol = '';
+  bool sortAsc = false;
+  List<Map<String, dynamic>> sortedData = [];
+
+  @override
+  void initState() {
+    super.initState();
+    sortedData = List.from(widget.datos);
+    if (widget.columnas.length > 1) {
+      sortCol = widget.columnas[1]['key'] as String;
+    }
+    _aplicarSort();
+  }
+
+  @override
+  void didUpdateWidget(covariant SmartTableWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    sortedData = List.from(widget.datos);
+    _aplicarSort();
+  }
+
+  void _aplicarSort() {
+    if (sortCol.isEmpty) return;
+    sortedData.sort((a, b) {
+      var valA = a[sortCol];
+      var valB = b[sortCol];
+      if (valA == null) return sortAsc ? 1 : -1;
+      if (valB == null) return sortAsc ? -1 : 1;
+      int comp = (valA as Comparable).compareTo(valB);
+      return sortAsc ? comp : -comp;
+    });
+  }
+
+  void _onSort(String key) {
+    setState(() {
+      if (sortCol == key) {
+        sortAsc = !sortAsc;
+      } else {
+        sortCol = key;
+        sortAsc = false;
+      }
+      _aplicarSort();
+    });
+  }
+
+  String _formatVal(dynamic val, String type) {
+    if (val == null) return '-';
+    if (type == 'money') return '\$ ${_formatear(val)}';
+    if (type == 'hl') return (val as num).toStringAsFixed(2);
+    if (type == 'pct') return '${(val as num).toStringAsFixed(1)}%';
+    if (type == 'num') return '${(val as num).toInt()}';
+    return val.toString();
+  }
+
+  Color _getColor(String type) {
+    if (type == 'money') return Colors.green.shade700;
+    if (type == 'hl') return Colors.teal.shade700;
+    if (type == 'num') return Colors.red.shade700;
+    if (type == 'pct') return Colors.orange.shade800;
+    return const Color(0xFF1E293B);
+  }
+
+  String _formatear(dynamic valor) {
+    double v = (valor as num).toDouble();
+    return v.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Map<String, double> totales = {};
+    for (var c in widget.columnas) {
+      if (c['sum'] == true) {
+        double s = 0;
+        for (var row in widget.datos) {
+          s += (row[c['key']] as num).toDouble();
+        }
+        totales[c['key'] as String] = s;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.titulo, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF1E293B))),
+          const SizedBox(height: 12),
+          Container(
+            height: 250,
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(8)),
+            child: Column(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(color: Color(0xFFF8FAFC), borderRadius: BorderRadius.vertical(top: Radius.circular(8)), border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+                  child: Row(
+                    children: widget.columnas.map((c) => Expanded(
+                      flex: c['flex'] as int,
+                      child: InkWell(
+                        onTap: () => _onSort(c['key'] as String),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(child: Text(c['label'] as String, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5), overflow: TextOverflow.ellipsis)),
+                              if (sortCol == c['key']) Icon(sortAsc ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: const Color(0xFFF36F21)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: sortedData.length,
+                    itemBuilder: (ctx, i) {
+                      var row = sortedData[i];
+                      return Container(
+                        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+                        child: Row(
+                          children: widget.columnas.map((c) => Expanded(
+                            flex: c['flex'] as int,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                              child: Text(
+                                _formatVal(row[c['key']], c['type'] as String),
+                                style: TextStyle(fontSize: 10.5, fontWeight: c['type'] == 'text' ? FontWeight.w600 : FontWeight.w800, color: _getColor(c['type'] as String)),
+                              ),
+                            ),
+                          )).toList(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)), border: Border(top: BorderSide(color: Colors.orange.shade200))),
+                  child: Row(
+                    children: widget.columnas.map((c) => Expanded(
+                      flex: c['flex'] as int,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                        child: Text(
+                          c['sum'] == true ? _formatVal(totales[c['key']], c['type'] as String) : (c == widget.columnas.first ? 'TOTALES' : ''),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: c['sum'] == true ? _getColor(c['type'] as String) : Colors.black87),
+                        ),
+                      ),
+                    )).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -1647,222 +1338,114 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
 class EvolucionDiariaChart extends StatelessWidget {
   final List<Map<String, dynamic>> reportes;
-  final DateTime fechaDesde;
-  final DateTime fechaHasta;
-
-  const EvolucionDiariaChart({
-    super.key,
-    required this.reportes,
-    required this.fechaDesde,
-    required this.fechaHasta,
-  });
+  final DateTime fechaDesde, fechaHasta;
+  const EvolucionDiariaChart({super.key, required this.reportes, required this.fechaDesde, required this.fechaHasta});
 
   @override
   Widget build(BuildContext context) {
     Map<int, double> conteoDias = {};
-
     for (var r in reportes) {
       String? rawFecha = r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString();
       if (rawFecha != null && rawFecha.isNotEmpty) {
-        String soloFecha = rawFecha.split('T')[0].split(' ')[0];
-        DateTime? dt = DateTime.tryParse(soloFecha);
-        if (dt != null) {
-          double cant = double.tryParse(r['cantidad']?.toString() ?? '1') ?? 1;
-          conteoDias[dt.day] = (conteoDias[dt.day] ?? 0) + cant;
-        }
+        DateTime? dt = DateTime.tryParse(rawFecha.split('T')[0].split(' ')[0]);
+        if (dt != null) conteoDias[dt.day] = (conteoDias[dt.day] ?? 0.0) + (double.tryParse(r['cantidad']?.toString() ?? '1') ?? 1.0);
       }
     }
-
-    List<int> dias = [];
-    List<double> valores = [];
-
-    int totalDias = fechaHasta.difference(fechaDesde).inDays + 1;
-    if (totalDias < 1) totalDias = 30;
-
+    List<int> dias = []; List<double> valores = [];
+    int totalDias = max(1, fechaHasta.difference(fechaDesde).inDays + 1);
     for (int i = 0; i < min(totalDias, 31); i++) {
       DateTime curr = fechaDesde.add(Duration(days: i));
-      dias.add(curr.day);
-      valores.add(conteoDias[curr.day] ?? 0);
+      dias.add(curr.day); valores.add(conteoDias[curr.day] ?? 0);
     }
-
-    if (valores.isEmpty) {
-      return const Center(child: Text('Sin datos en el rango seleccionado', style: TextStyle(fontSize: 11, color: Colors.grey)));
-    }
-
-    return CustomPaint(
-      painter: _SmoothLineChartPainter(dias: dias, valores: valores),
-      child: Container(),
-    );
+    if (valores.isEmpty) return const Center(child: Text('Sin datos en el rango', style: TextStyle(color: Colors.grey)));
+    return CustomPaint(painter: _SmoothLineChartPainter(dias: dias, valores: valores), child: Container());
   }
 }
 
 class _SmoothLineChartPainter extends CustomPainter {
-  final List<int> dias;
-  final List<double> valores;
-
+  final List<int> dias; final List<double> valores;
   _SmoothLineChartPainter({required this.dias, required this.valores});
 
   @override
   void paint(Canvas canvas, Size size) {
     if (valores.isEmpty) return;
+    double maxVal = max(100, valores.reduce(max));
+    double pL = 30, pB = 20, w = size.width - pL, h = size.height - pB;
 
-    double maxVal = valores.reduce(max);
-    if (maxVal == 0) maxVal = 100;
-
-    double paddingLeft = 30;
-    double paddingBottom = 20;
-    double width = size.width - paddingLeft;
-    double height = size.height - paddingBottom;
-
-    final gridPaint = Paint()
-      ..color = Colors.grey.shade200
-      ..strokeWidth = 0.8;
-
+    final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1;
     for (int i = 0; i <= 4; i++) {
-      double y = height - (i * (height / 4));
-      canvas.drawLine(Offset(paddingLeft, y), Offset(size.width, y), gridPaint);
-
-      TextPainter tp = TextPainter(
-        text: TextSpan(text: '${(maxVal / 4 * i).toInt()}', style: TextStyle(fontSize: 8, color: Colors.grey.shade500)),
-        textDirection: TextDirection.ltr,
-      );
-      tp.layout();
-      tp.paint(canvas, Offset(5, y - 5));
+      double y = h - (i * (h / 4));
+      canvas.drawLine(Offset(pL, y), Offset(size.width, y), gridPaint);
+      TextPainter(text: TextSpan(text: '${(maxVal / 4 * i).toInt()}', style: TextStyle(fontSize: 9, color: Colors.grey.shade500)), textDirection: TextDirection.ltr)..layout()..paint(canvas, Offset(0, y - 6));
     }
 
-    double stepX = width / (valores.length > 1 ? valores.length - 1 : 1);
-
-    List<Offset> points = [];
+    double stepX = w / max(1, valores.length - 1);
+    List<Offset> pts = [];
     for (int i = 0; i < valores.length; i++) {
-      double x = paddingLeft + (i * stepX);
-      double y = height - ((valores[i] / maxVal) * (height - 20));
-      points.add(Offset(x, y));
-
-      TextPainter tp = TextPainter(
-        text: TextSpan(text: dias[i].toString().padLeft(2, '0'), style: TextStyle(fontSize: 8, color: Colors.grey.shade600)),
-        textDirection: TextDirection.ltr,
-      );
-      tp.layout();
-      tp.paint(canvas, Offset(x - 5, height + 4));
+      double x = pL + (i * stepX), y = h - ((valores[i] / maxVal) * (h - 20));
+      pts.add(Offset(x, y));
+      TextPainter(text: TextSpan(text: dias[i].toString().padLeft(2, '0'), style: TextStyle(fontSize: 9, color: Colors.grey.shade600, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout()..paint(canvas, Offset(x - 6, h + 6));
     }
 
-    Path path = Path();
-    Path fillPath = Path();
+    Path path = Path()..moveTo(pts[0].dx, pts[0].dy);
+    Path fill = Path()..moveTo(pts[0].dx, h)..lineTo(pts[0].dx, pts[0].dy);
 
-    path.moveTo(points[0].dx, points[0].dy);
-    fillPath.moveTo(points[0].dx, height);
-    fillPath.lineTo(points[0].dx, points[0].dy);
-
-    for (int i = 0; i < points.length - 1; i++) {
-      double p0x = points[i].dx;
-      double p0y = points[i].dy;
-      double p1x = points[i + 1].dx;
-      double p1y = points[i + 1].dy;
-
-      double controlX1 = p0x + (p1x - p0x) / 2;
-      double controlY1 = p0y;
-      double controlX2 = p0x + (p1x - p0x) / 2;
-      double controlY2 = p1y;
-
-      path.cubicTo(controlX1, controlY1, controlX2, controlY2, p1x, p1y);
-      fillPath.cubicTo(controlX1, controlY1, controlX2, controlY2, p1x, p1y);
+    for (int i = 0; i < pts.length - 1; i++) {
+      double cx1 = pts[i].dx + (pts[i + 1].dx - pts[i].dx) / 2;
+      path.cubicTo(cx1, pts[i].dy, cx1, pts[i + 1].dy, pts[i + 1].dx, pts[i + 1].dy);
+      fill.cubicTo(cx1, pts[i].dy, cx1, pts[i + 1].dy, pts[i + 1].dx, pts[i + 1].dy);
     }
+    fill..lineTo(pts.last.dx, h)..close();
 
-    fillPath.lineTo(points.last.dx, height);
-    fillPath.close();
+    canvas.drawPath(fill, Paint()..shader = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [const Color(0xFFF36F21).withOpacity(0.3), const Color(0xFFF36F21).withOpacity(0.0)]).createShader(Rect.fromLTWH(0, 0, size.width, size.height)));
+    canvas.drawPath(path, Paint()..color = const Color(0xFFF36F21)..strokeWidth = 3..style = PaintingStyle.stroke);
 
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [const Color(0xFFF36F21).withOpacity(0.25), const Color(0xFFF36F21).withOpacity(0.01)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-
-    canvas.drawPath(fillPath, fillPaint);
-
-    final linePaint = Paint()
-      ..color = const Color(0xFFF36F21)
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-
-    canvas.drawPath(path, linePaint);
-
-    final dotPaint = Paint()..color = const Color(0xFFF36F21);
-    final dotBorder = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    for (int i = 0; i < points.length; i++) {
+    for (int i = 0; i < pts.length; i++) {
       if (valores[i] > 0) {
-        canvas.drawCircle(points[i], 4, dotPaint);
-        canvas.drawCircle(points[i], 4, dotBorder);
-
-        TextPainter tp = TextPainter(
-          text: TextSpan(text: '${valores[i].toInt()}', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Color(0xFFD84315))),
-          textDirection: TextDirection.ltr,
-        );
-        tp.layout();
-        tp.paint(canvas, Offset(points[i].dx - (tp.width / 2), points[i].dy - 12));
+        canvas.drawCircle(pts[i], 4, Paint()..color = const Color(0xFFF36F21));
+        canvas.drawCircle(pts[i], 4, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 1.5);
+        TextPainter(text: TextSpan(text: '${valores[i].toInt()}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFFD84315))), textDirection: TextDirection.ltr)..layout()..paint(canvas, Offset(pts[i].dx - 6, pts[i].dy - 16));
       }
     }
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  @override bool shouldRepaint(covariant CustomPainter old) => true;
 }
 
 class DonutChartWidget extends StatelessWidget {
   final Map<String, double> datos;
   final List<Color> colores;
-
   const DonutChartWidget({super.key, required this.datos, required this.colores});
 
   @override
   Widget build(BuildContext context) {
-    if (datos.isEmpty) {
-      return const Center(child: Text('Sin datos', style: TextStyle(fontSize: 10, color: Colors.grey)));
-    }
-
-    double total = datos.values.fold(0, (s, item) => s + item);
+    if (datos.isEmpty) return const Center(child: Text('Sin datos', style: TextStyle(color: Colors.grey)));
+    double total = datos.values.fold<double>(0.0, (sum, item) => sum + item);
 
     return Row(
       children: [
-        Expanded(
-          flex: 5,
-          child: CustomPaint(
-            painter: _DonutPainter(datos: datos, colores: colores, total: total),
-            child: Container(),
-          ),
-        ),
-        const SizedBox(width: 8),
+        Expanded(flex: 5, child: CustomPaint(painter: _DonutPainter(datos: datos, colores: colores, total: total), child: Container())),
+        const SizedBox(width: 10),
         Expanded(
           flex: 4,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: datos.keys.toList().asMap().entries.map((entry) {
-              int idx = entry.key;
-              String label = entry.value;
-              Color color = colores[idx % colores.length];
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2.0),
-                child: Row(
-                  children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.rectangle, borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.w500),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          child: Scrollbar(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: datos.keys.toList().asMap().entries.map((e) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3.0),
+                    child: Row(
+                      children: [
+                        Container(width: 10, height: 10, decoration: BoxDecoration(color: colores[e.key % colores.length], borderRadius: BorderRadius.circular(3))),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(e.value, style: const TextStyle(fontSize: 9, color: Color(0xFF475569), fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            }).toList(),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
         )
       ],
@@ -1871,10 +1454,7 @@ class DonutChartWidget extends StatelessWidget {
 }
 
 class _DonutPainter extends CustomPainter {
-  final Map<String, double> datos;
-  final List<Color> colores;
-  final double total;
-
+  final Map<String, double> datos; final List<Color> colores; final double total;
   _DonutPainter({required this.datos, required this.colores, required this.total});
 
   @override
@@ -1882,7 +1462,6 @@ class _DonutPainter extends CustomPainter {
     double startAngle = -pi / 2;
     Offset center = Offset(size.width / 2, size.height / 2);
     double radius = min(size.width, size.height) / 2 - 8;
-
     final paintArc = Paint()..style = PaintingStyle.fill;
 
     int idx = 0;
@@ -1890,38 +1469,18 @@ class _DonutPainter extends CustomPainter {
       if (val > 0) {
         double sweepAngle = (val / total) * 2 * pi;
         paintArc.color = colores[idx % colores.length];
-
-        canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius),
-          startAngle,
-          sweepAngle,
-          true,
-          paintArc,
-        );
-
-        double middleAngle = startAngle + (sweepAngle / 2);
-        double textX = center.dx + (radius * 0.65) * cos(middleAngle);
-        double textY = center.dy + (radius * 0.65) * sin(middleAngle);
+        canvas.drawArc(Rect.fromCircle(center: center, radius: radius), startAngle, sweepAngle, true, paintArc);
 
         double pct = (val / total) * 100;
-        if (pct >= 4) {
-          TextPainter tp = TextPainter(
-            text: TextSpan(text: '${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white)),
-            textDirection: TextDirection.ltr,
-          );
-          tp.layout();
-          tp.paint(canvas, Offset(textX - (tp.width / 2), textY - (tp.height / 2)));
+        if (pct >= 5) {
+          double mid = startAngle + (sweepAngle / 2);
+          TextPainter(text: TextSpan(text: '${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white)), textDirection: TextDirection.ltr)..layout()..paint(canvas, Offset(center.dx + (radius * 0.65) * cos(mid) - 12, center.dy + (radius * 0.65) * sin(mid) - 6));
         }
-
         startAngle += sweepAngle;
       }
       idx++;
     });
-
-    final centerCircle = Paint()..color = Colors.white;
-    canvas.drawCircle(center, radius * 0.5, centerCircle);
+    canvas.drawCircle(center, radius * 0.55, Paint()..color = Colors.white);
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  @override bool shouldRepaint(covariant CustomPainter old) => true;
 }

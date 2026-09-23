@@ -13,6 +13,10 @@ import 'fms_metas_screen.dart';
 import 'fms_tendencias_screen.dart';
 import 'fms_tendencias_operadores_screen.dart';
 import 'fms_abordajes_screen.dart';
+import 'plan_reaccion_screen.dart';
+import 'sic_roturas_screen.dart';
+// 🌟 NUEVA IMPORTACIÓN PARA EL CRUCE FMS VS ROTURAS
+import 'cruce_fms_roturas_screen.dart';
 
 class PantallaPrincipal extends StatefulWidget {
   final Map<String, dynamic>? datosUsuario;
@@ -79,40 +83,38 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
         return DashboardRoturasScreen(onToggleSidebar: _toggleSidebar);
       case 'ROTURA_HORA_HORA':
         return ReporteHoraHoraScreen(onToggleSidebar: _toggleSidebar);
+      case 'SIC_ROTURAS':
+        return SicRoturasScreen(onToggleSidebar: _toggleSidebar);
+      case 'PLAN_REACCION':
+        return PlanReaccionScreen(onToggleSidebar: _toggleSidebar);
       case 'REPROCESOS_ESTIBAS':
         return DashboardEstibasScreen(onToggleSidebar: _toggleSidebar);
       case 'ENTREGA_ESTIBAS':
         return const EstibasEntregadasScreen();
       case 'INVENTARIO_ESTIBAS':
         return const InventarioEstibasScreen();
-
       case 'DASHBOARD_AI':
         return DashboardAiScreen(
           datosEmpleado: widget.datosUsuario,
           onToggleSidebar: _toggleSidebar,
         );
-
       case 'DASHBOARD_FMS':
         return DashboardFmsScreen(onToggleSidebar: _toggleSidebar);
-
       case 'DASHBOARD_FMS_MAQUINAS':
         return DashboardFmsMaquinasScreen(onToggleSidebar: _toggleSidebar);
-
       case 'FMS_AREAS':
         return DashboardFmsAreasScreen(onToggleSidebar: _toggleSidebar);
-
       case 'METAS_FMS':
         return FmsMetasScreen(onToggleSidebar: _toggleSidebar);
-
       case 'TENDENCIAS_FMS':
         return FmsTendenciasScreen(onToggleSidebar: _toggleSidebar);
-
       case 'TENDENCIAS_OPERADORES':
         return FmsTendenciasOperadoresScreen(onToggleSidebar: _toggleSidebar);
-
       case 'FMS_ABORDAJES':
         return FmsAbordajesScreen(onToggleSidebar: _toggleSidebar);
-
+    // 🌟 NUEVA VISTA CRUCE
+      case 'CRUCE_FMS_ROTURAS':
+        return CruceFmsRoturasScreen(onToggleSidebar: _toggleSidebar);
       default:
         return const Center(child: Text('Seleccione una opción del menú'));
     }
@@ -123,6 +125,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'SORTING': return 'PLANTA TOCANCIPÁ - DASHBOARD SORTING';
       case 'ROTURA_DASHBOARD': return 'PLANTA TOCANCIPÁ - DASHBOARD ROTURAS';
       case 'ROTURA_HORA_HORA': return 'PLANTA TOCANCIPÁ - REPORTE HORA A HORA';
+      case 'SIC_ROTURAS': return 'PLANTA TOCANCIPÁ - SIC DE ROTURAS';
+      case 'PLAN_REACCION': return 'PLANTA TOCANCIPÁ - PLAN DE REACCIÓN';
       case 'REPROCESOS_ESTIBAS': return 'PLANTA TOCANCIPÁ - REPARACIÓN DE ESTIBAS';
       case 'ENTREGA_ESTIBAS': return 'PLANTA TOCANCIPÁ - ENTREGA DE ESTIBAS';
       case 'INVENTARIO_ESTIBAS': return 'PLANTA TOCANCIPÁ - INVENTARIO DE ESTIBAS';
@@ -134,7 +138,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
       case 'TENDENCIAS_OPERADORES': return 'PLANTA TOCANCIPÁ - TENDENCIAS OPERADORES';
       case 'FMS_ABORDAJES': return 'PLANTA TOCANCIPÁ - ABORDAJES FMS';
       case 'DASHBOARD_AI': return 'PLANTA TOCANCIPÁ - DASHBOARD REVISIÓN AI';
-
+    // 🌟 NUEVO TÍTULO CRUCE
+      case 'CRUCE_FMS_ROTURAS': return 'PLANTA TOCANCIPÁ - CRUCE FMS VS ROTURAS';
       default: return 'OPERACIÓN TOCANCIPÁ';
     }
   }
@@ -175,48 +180,15 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                 expandido: _menuFmsExpandido,
                 onTap: () => setState(() => _menuFmsExpandido = !_menuFmsExpandido),
                 submenus: [
-                  _buildOpcionSubmenu(
-                    titulo: 'SEGUIMIENTO FMS',
-                    idVista: 'DASHBOARD_FMS',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'SEGUIMIENTO MAQUINAS',
-                    idVista: 'DASHBOARD_FMS_MAQUINAS',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'FMS ÁREAS',
-                    idVista: 'FMS_AREAS',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'METAS FMS',
-                    idVista: 'METAS_FMS',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'TEND.SUPER.',
-                    idVista: 'TENDENCIAS_FMS',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'TEND. OPERA.',
-                    idVista: 'TENDENCIAS_OPERADORES',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
-                  _buildOpcionSubmenu(
-                    titulo: 'CUMP. ABORDAJES',
-                    idVista: 'FMS_ABORDAJES',
-                    icono: Icons.local_shipping_rounded,
-                    nivel: 3,
-                  ),
+                  _buildOpcionSubmenu(titulo: 'SEGUIMIENTO FMS', idVista: 'DASHBOARD_FMS', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'SEGUIMIENTO MAQUINAS', idVista: 'DASHBOARD_FMS_MAQUINAS', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'FMS ÁREAS', idVista: 'FMS_AREAS', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'METAS FMS', idVista: 'METAS_FMS', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'TEND.SUPER.', idVista: 'TENDENCIAS_FMS', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'TEND. OPERA.', idVista: 'TENDENCIAS_OPERADORES', icono: Icons.local_shipping_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'CUMP. ABORDAJES', idVista: 'FMS_ABORDAJES', icono: Icons.local_shipping_rounded, nivel: 3),
+                  // 🌟 NUEVO ENLACE PARA EL CRUCE
+                  _buildOpcionSubmenu(titulo: 'CRUCE FMS/ROTURA', idVista: 'CRUCE_FMS_ROTURAS', icono: Icons.compare_arrows_rounded, nivel: 3),
                 ],
               ),
               _buildSubGrupoExpandible(
@@ -226,6 +198,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> with SingleTicker
                 submenus: [
                   _buildOpcionSubmenu(titulo: 'Dashboard Roturas', idVista: 'ROTURA_DASHBOARD', icono: Icons.analytics_outlined, nivel: 3),
                   _buildOpcionSubmenu(titulo: 'Reporte Hora a Hora', idVista: 'ROTURA_HORA_HORA', icono: Icons.access_time_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'SIC Roturas', idVista: 'SIC_ROTURAS', icono: Icons.view_timeline_rounded, nivel: 3),
+                  _buildOpcionSubmenu(titulo: 'Plan de Reacción', idVista: 'PLAN_REACCION', icono: Icons.assignment_turned_in_rounded, nivel: 3),
                 ],
               ),
             ],
