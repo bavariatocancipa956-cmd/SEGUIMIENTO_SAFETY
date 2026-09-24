@@ -25,9 +25,10 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
 
   List<Map<String, dynamic>> _todosLosReportes = [];
   List<Map<String, dynamic>> _reportesFiltrados = [];
+  List<Map<String, dynamic>> _reportesAnual = [];
 
   DateTime _fechaDesde = DateTime(2026, 7, 1);
-  DateTime _fechaHasta = DateTime(2026, 7, 27);
+  DateTime _fechaHasta = DateTime.now();
 
   // Filtros
   List<String> _listaTurnos = [];
@@ -91,27 +92,44 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
           if (fila is Map) {
             final Map<String, dynamic> mapa = {};
             fila.forEach((key, val) => mapa[key.toString().toLowerCase()] = val);
-            datosProcesados.add(mapa);
+
+            // ----------------------------------------------------------------------------------
+            // LECTURA SEPARADA PARA EVITAR CONFLICTOS DE LÓGICA
+            // ----------------------------------------------------------------------------------
+            // 1. Extraemos tipo_material_2 para los Filtros visuales, Donas y Tablas (PET, Lata...)
+            String t2Raw = (mapa['tipo_material_2']?.toString() ?? '').trim().toUpperCase();
+            String tipo2 = (t2Raw == 'NULL' || t2Raw == '[NULL]' || t2Raw.isEmpty) ? 'SIN DEFINIR' : t2Raw;
+            mapa['tipo_material_limpio'] = tipo2;
+
+            // 2. Extraemos tipo_material solo para la regla oculta del WQI (PT, ERR...)
+            String t1Raw = (mapa['tipo_material']?.toString() ?? '').trim().toUpperCase();
+            String tipo1 = (t1Raw == 'NULL' || t1Raw == '[NULL]' || t1Raw.isEmpty) ? 'SIN DEFINIR' : t1Raw;
+            mapa['tipo_material_pt'] = tipo1;
+            // ----------------------------------------------------------------------------------
 
             String? t = mapa['turno']?.toString();
             String? sup = mapa['supervisor']?.toString();
             String? area = mapa['area']?.toString();
-            String? tipo = mapa['tipo_material_2']?.toString() ?? mapa['tipo_material']?.toString();
             String? opm = mapa['personal']?.toString() ?? mapa['reportante']?.toString();
             String? causal = mapa['causal']?.toString();
             String? escenario = mapa['escenario']?.toString();
             String? zona = mapa['zona']?.toString();
-            String? wqi = mapa['wqi']?.toString();
+
+            String wRaw = (mapa['wqi']?.toString() ?? '').trim().toUpperCase();
+            String wqi = (wRaw == 'NULL' || wRaw == '[NULL]' || wRaw.isEmpty) ? 'NO ASIGNADO' : wRaw;
+            mapa['wqi_limpio'] = wqi;
+
+            datosProcesados.add(mapa);
 
             if (t != null && t.trim().isNotEmpty) turnos.add(t.trim());
             if (sup != null && sup.trim().isNotEmpty) supervisores.add(sup.trim());
             if (area != null && area.trim().isNotEmpty) areas.add(area.trim());
-            if (tipo != null && tipo.trim().isNotEmpty) tipos.add(tipo.trim());
+            if (tipo2 != 'SIN DEFINIR') tipos.add(tipo2); // Llena el dropdown con "PET", "LATA", etc.
             if (opm != null && opm.trim().isNotEmpty && opm.toUpperCase() != 'NULL') opms.add(opm.trim());
             if (causal != null && causal.trim().isNotEmpty && causal.toUpperCase() != 'NULL') causales.add(causal.trim());
             if (escenario != null && escenario.trim().isNotEmpty && escenario.toUpperCase() != 'NULL') escenarios.add(escenario.trim());
             if (zona != null && zona.trim().isNotEmpty && zona.toUpperCase() != 'NULL') zonas.add(zona.trim());
-            if (wqi != null && wqi.trim().isNotEmpty && wqi.toUpperCase() != 'NULL') wqis.add(wqi.trim());
+            if (wqi != 'NO ASIGNADO') wqis.add(wqi);
           }
         }
 
@@ -172,9 +190,58 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     }
   }
 
+  bool _cumpleFiltrosSinFecha(Map<String, dynamic> row) {
+    String turnoRow = (row['turno']?.toString() ?? '').trim();
+    String supRow = (row['supervisor']?.toString() ?? '').trim();
+    String areaRow = (row['area']?.toString() ?? '').trim();
+    String tipoRow = row['tipo_material_limpio'] ?? 'SIN DEFINIR'; // Usado para el Dropdown (PET, Lata...)
+    String tipoPTRow = row['tipo_material_pt'] ?? 'SIN DEFINIR'; // Usado para la Regla WQI (PT, ERR...)
+    String opmRow = (row['personal']?.toString() ?? row['reportante']?.toString() ?? '').trim();
+    String causalRow = (row['causal']?.toString() ?? '').trim();
+    String escRow = (row['escenario']?.toString() ?? '').trim();
+    String zonaRow = (row['zona']?.toString() ?? '').trim();
+    String wqiRow = row['wqi_limpio'] ?? 'NO ASIGNADO';
+
+    // 1. REGLA INTELIGENTE WQI: Revisa la columna tipo_material buscando "PT"
+    if (_wqiSel.length == 1 && (_wqiSel.first.toUpperCase() == 'SI' || _wqiSel.first.toUpperCase() == 'SÍ')) {
+      if (tipoPTRow != 'PT') {
+        return false;
+      }
+    }
+
+    // 2. Comprobación estándar de Dropdowns (El de Tipo Material ahora filtra por PET, LATA...)
+    if (_turnosSel.isEmpty || (_turnosSel.length != _listaTurnos.length && !_turnosSel.contains(turnoRow))) return false;
+    if (_supervisoresSel.isEmpty || (_supervisoresSel.length != _listaSupervisores.length && !_supervisoresSel.contains(supRow))) return false;
+    if (_areasSel.isEmpty || (_areasSel.length != _listaAreas.length && !_areasSel.contains(areaRow))) return false;
+    if (_tiposSel.isEmpty || (_tiposSel.length != _listaTipos.length && !_tiposSel.contains(tipoRow))) return false;
+    if (_opmsSel.isEmpty || (_opmsSel.length != _listaOpms.length && !_opmsSel.contains(opmRow))) return false;
+    if (_causalesSel.isEmpty || (_causalesSel.length != _listaCausales.length && !_causalesSel.contains(causalRow))) return false;
+    if (_escenariosSel.isEmpty || (_escenariosSel.length != _listaEscenarios.length && !_escenariosSel.contains(escRow))) return false;
+    if (_zonasSel.isEmpty || (_zonasSel.length != _listaZonas.length && !_zonasSel.contains(zonaRow))) return false;
+    if (_wqiSel.isEmpty || (_wqiSel.length != _listaWqi.length && !_wqiSel.contains(wqiRow))) return false;
+
+    if (_atribuiblesSel.isEmpty) return false;
+    if (_atribuiblesSel.length != _listaAtribuibles.length) {
+      String at = (row['atribuible']?.toString() ?? '').toUpperCase();
+      bool esCondicion = at.contains('NO') || at.contains('CONDICI');
+      bool esComportamiento = (at.contains('ATRIBUIBLE') && !at.contains('NO')) || at.contains('COMPORTAMIENTO');
+      bool pasaFiltro = false;
+      if (_atribuiblesSel.contains('Condición') && esCondicion) pasaFiltro = true;
+      if (_atribuiblesSel.contains('Comportamiento') && esComportamiento) pasaFiltro = true;
+      if (!pasaFiltro) return false;
+    }
+
+    return true;
+  }
+
   void _aplicarFiltros() {
     setState(() {
-      _reportesFiltrados = _todosLosReportes.where((row) {
+      _reportesFiltrados = [];
+      _reportesAnual = [];
+
+      for (var row in _todosLosReportes) {
+        if (!_cumpleFiltrosSinFecha(row)) continue;
+
         DateTime? fechaFila;
         String? rawFecha = row['fecha_evento']?.toString() ?? row['timestamp_registro']?.toString();
         if (rawFecha != null && rawFecha.isNotEmpty) {
@@ -183,53 +250,19 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
         }
 
         if (fechaFila != null) {
+          if (fechaFila.year == _fechaHasta.year) {
+            _reportesAnual.add(row);
+          }
+
           final fSin = DateTime(fechaFila.year, fechaFila.month, fechaFila.day);
           final dSin = DateTime(_fechaDesde.year, _fechaDesde.month, _fechaDesde.day);
           final hSin = DateTime(_fechaHasta.year, _fechaHasta.month, _fechaHasta.day);
-          if (fSin.isBefore(dSin) || fSin.isAfter(hSin)) return false;
+          if (!fSin.isBefore(dSin) && !fSin.isAfter(hSin)) {
+            _reportesFiltrados.add(row);
+          }
         }
-
-        String turnoRow = (row['turno']?.toString() ?? '').trim();
-        String supRow = (row['supervisor']?.toString() ?? '').trim();
-        String areaRow = (row['area']?.toString() ?? '').trim();
-        String tipoRow = (row['tipo_material_2']?.toString() ?? row['tipo_material']?.toString() ?? '').trim();
-        String opmRow = (row['personal']?.toString() ?? row['reportante']?.toString() ?? '').trim();
-        String causalRow = (row['causal']?.toString() ?? '').trim();
-        String escRow = (row['escenario']?.toString() ?? '').trim();
-        String zonaRow = (row['zona']?.toString() ?? '').trim();
-        String wqiRow = (row['wqi']?.toString() ?? '').trim();
-
-        if (_turnosSel.isEmpty || (_turnosSel.length != _listaTurnos.length && !_turnosSel.contains(turnoRow))) return false;
-        if (_supervisoresSel.isEmpty || (_supervisoresSel.length != _listaSupervisores.length && !_supervisoresSel.contains(supRow))) return false;
-        if (_areasSel.isEmpty || (_areasAreasSelLengthCheck(_areasSel))) return false;
-        if (_tiposSel.isEmpty || (_tiposSel.length != _listaTipos.length && !_tiposSel.contains(tipoRow))) return false;
-        if (_opmsSel.isEmpty || (_opmsSel.length != _listaOpms.length && !_opmsSel.contains(opmRow))) return false;
-        if (_causalesSel.isEmpty || (_causalesSel.length != _listaCausales.length && !_causalesSel.contains(causalRow))) return false;
-        if (_escenariosSel.isEmpty || (_escenariosSel.length != _listaEscenarios.length && !_escenariosSel.contains(escRow))) return false;
-        if (_zonasSel.isEmpty || (_zonasSel.length != _listaZonas.length && !_zonasSel.contains(zonaRow))) return false;
-        if (_wqiSel.isEmpty || (_wqiSel.length != _listaWqi.length && !_wqiSel.contains(wqiRow))) return false;
-
-        if (_atribuiblesSel.isEmpty) return false;
-        if (_atribuiblesSel.length != _listaAtribuibles.length) {
-          String at = (row['atribuible']?.toString() ?? '').toUpperCase();
-
-          bool esCondicion = at.contains('NO') || at.contains('CONDICI');
-          bool esComportamiento = (at.contains('ATRIBUIBLE') && !at.contains('NO')) || at.contains('COMPORTAMIENTO');
-
-          bool pasaFiltro = false;
-          if (_atribuiblesSel.contains('Condición') && esCondicion) pasaFiltro = true;
-          if (_atribuiblesSel.contains('Comportamiento') && esComportamiento) pasaFiltro = true;
-
-          if (!pasaFiltro) return false;
-        }
-
-        return true;
-      }).toList();
+      }
     });
-  }
-
-  bool _areasAreasSelLengthCheck(List<String> sel) {
-    return sel.length != _listaAreas.length && !sel.contains('');
   }
 
   Future<void> _tomarCapturaFoto() async {
@@ -275,7 +308,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
       String cantidad = r['cantidad']?.toString() ?? '0';
       double hlTotal = _parseHl(r['hl_total'] ?? r['hl']);
       String causal = (r['causal']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
-      String wqi = (r['wqi']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
+      String wqi = (r['wqi_limpio']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
       String obs = (r['descripcion']?.toString() ?? r['observacion']?.toString() ?? 'Sin observación').replaceAll(';', ',').replaceAll('\n', ' ');
       String conciliador = (r['conciliador']?.toString() ?? 'N/A').replaceAll(';', ',').replaceAll('\n', ' ');
 
@@ -326,16 +359,35 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
                 _buildTarjetasKPI(),
                 const SizedBox(height: 18),
 
-                _buildCardBase(
-                  titulo: 'Evolución Diaria de Roturas (Cantidades)',
-                  child: SizedBox(
-                    height: 240,
-                    child: EvolucionDiariaChart(
-                      reportes: _reportesFiltrados,
-                      fechaDesde: _fechaDesde,
-                      fechaHasta: _fechaHasta,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildCardBase(
+                        titulo: 'Evolución Diaria de Roturas - Rango Seleccionado',
+                        child: SizedBox(
+                          height: 240,
+                          child: EvolucionDiariaChart(
+                            reportes: _reportesFiltrados,
+                            fechaDesde: _fechaDesde,
+                            fechaHasta: _fechaHasta,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _buildCardBase(
+                        titulo: 'Evolución Mensual de Roturas - Año ${_fechaHasta.year}',
+                        child: SizedBox(
+                          height: 240,
+                          child: EvolucionMensualChart(
+                            reportes: _reportesAnual,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 18),
 
@@ -672,7 +724,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
   Widget _buildDonaTipo() {
     Map<String, double> mapa = {};
     for (var r in _reportesFiltrados) {
-      String t = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'Sin Tipo';
+      String t = r['tipo_material_limpio']?.toString() ?? 'Sin Tipo';
       if (t.trim().isEmpty || t == 'NULL') t = 'Sin Tipo';
       mapa[t] = (mapa[t] ?? 0) + 1;
     }
@@ -732,7 +784,7 @@ class _DashboardRoturasScreenState extends State<DashboardRoturasScreen> {
     List<Map<String, dynamic>> datos = [];
     Map<String, Map<String, dynamic>> agrupados = {};
     for (var r in _reportesFiltrados) {
-      String k = r['tipo_material_2']?.toString() ?? r['tipo_material']?.toString() ?? 'SIN DEFINIR';
+      String k = r['tipo_material_limpio']?.toString() ?? 'SIN DEFINIR';
       int cant = double.tryParse(r['cantidad']?.toString() ?? '1')?.toInt() ?? 1;
       double costo = double.tryParse(r['costo_total_baja']?.toString() ?? '0') ?? 0;
       double hlVal = _parseHl(r['hl_total'] ?? r['hl']);
@@ -1336,6 +1388,9 @@ class _SmartTableWidgetState extends State<SmartTableWidget> {
   }
 }
 
+// ===========================================================================
+// COMPONENTE: GRÁFICA DIARIA
+// ===========================================================================
 class EvolucionDiariaChart extends StatelessWidget {
   final List<Map<String, dynamic>> reportes;
   final DateTime fechaDesde, fechaHasta;
@@ -1357,7 +1412,7 @@ class EvolucionDiariaChart extends StatelessWidget {
       DateTime curr = fechaDesde.add(Duration(days: i));
       dias.add(curr.day); valores.add(conteoDias[curr.day] ?? 0);
     }
-    if (valores.isEmpty) return const Center(child: Text('Sin datos en el rango', style: TextStyle(color: Colors.grey)));
+    if (valores.isEmpty || valores.every((v) => v == 0)) return const Center(child: Text('Sin datos en el rango', style: TextStyle(color: Colors.grey)));
     return CustomPaint(painter: _SmoothLineChartPainter(dias: dias, valores: valores), child: Container());
   }
 }
@@ -1369,7 +1424,7 @@ class _SmoothLineChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (valores.isEmpty) return;
-    double maxVal = max(100, valores.reduce(max));
+    double maxVal = max(10, valores.reduce(max));
     double pL = 30, pB = 20, w = size.width - pL, h = size.height - pB;
 
     final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1;
@@ -1411,6 +1466,102 @@ class _SmoothLineChartPainter extends CustomPainter {
   @override bool shouldRepaint(covariant CustomPainter old) => true;
 }
 
+// ===========================================================================
+// COMPONENTE NUEVO: GRÁFICA MENSUAL (SOLO MESES ACTIVOS Y CON BARRAS)
+// ===========================================================================
+class EvolucionMensualChart extends StatelessWidget {
+  final List<Map<String, dynamic>> reportes;
+  const EvolucionMensualChart({super.key, required this.reportes});
+
+  @override
+  Widget build(BuildContext context) {
+    List<double> mesesTotales = List.filled(12, 0.0);
+    final List<String> nombresMeses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    for (var r in reportes) {
+      String? rawFecha = r['fecha_evento']?.toString() ?? r['timestamp_registro']?.toString();
+      if (rawFecha != null && rawFecha.isNotEmpty) {
+        DateTime? dt = DateTime.tryParse(rawFecha.split('T')[0].split(' ')[0]);
+        if (dt != null) {
+          double cant = double.tryParse(r['cantidad']?.toString() ?? '1') ?? 1.0;
+          mesesTotales[dt.month - 1] += cant;
+        }
+      }
+    }
+
+    List<String> mesesActivos = [];
+    List<double> valoresActivos = [];
+
+    for (int i = 0; i < 12; i++) {
+      if (mesesTotales[i] > 0) {
+        mesesActivos.add(nombresMeses[i]);
+        valoresActivos.add(mesesTotales[i]);
+      }
+    }
+
+    if (valoresActivos.isEmpty) {
+      return const Center(child: Text('Sin datos en todo el año para este filtro', style: TextStyle(color: Colors.grey)));
+    }
+
+    return CustomPaint(painter: _BarChartMensualPainter(meses: mesesActivos, valores: valoresActivos), child: Container());
+  }
+}
+
+class _BarChartMensualPainter extends CustomPainter {
+  final List<String> meses;
+  final List<double> valores;
+  _BarChartMensualPainter({required this.meses, required this.valores});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double maxVal = max(10, valores.reduce(max)) * 1.35;
+    double pL = 35, pB = 20, w = size.width - pL, h = size.height - pB;
+
+    final gridPaint = Paint()..color = Colors.grey.shade200..strokeWidth = 1;
+
+    for (int i = 0; i <= 4; i++) {
+      double y = h - (i * (h / 4));
+      canvas.drawLine(Offset(pL, y), Offset(size.width, y), gridPaint);
+
+      double val = (maxVal / 4 * i);
+      String label = val >= 1000 ? '${(val / 1000).toStringAsFixed(1)}k' : val.toInt().toString();
+
+      TextPainter tp = TextPainter(text: TextSpan(text: label, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)), textDirection: TextDirection.ltr)..layout();
+      tp.paint(canvas, Offset(pL - tp.width - 6, y - 6));
+    }
+
+    int cantidadMeses = meses.length;
+    double stepX = w / cantidadMeses;
+
+    double barWidth = cantidadMeses == 1 ? 60.0 : min(stepX * 0.5, 50.0);
+
+    final paintBar = Paint()..style = PaintingStyle.fill;
+    final paintEmpty = Paint()..color = Colors.grey.shade50..style = PaintingStyle.fill;
+
+    for (int i = 0; i < cantidadMeses; i++) {
+      double cx = pL + (i * stepX) + (stepX / 2);
+      double barH = (valores[i] / maxVal) * h;
+      double barY = h - barH;
+
+      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(cx, h / 2), width: barWidth, height: h), const Radius.circular(4)), paintEmpty);
+
+      paintBar.color = const Color(0xFF00B4D8);
+      canvas.drawRRect(RRect.fromRectAndCorners(Rect.fromLTRB(cx - barWidth / 2, barY, cx + barWidth / 2, h), topLeft: const Radius.circular(4), topRight: const Radius.circular(4)), paintBar);
+
+      String valorStr = valores[i].toInt().toString();
+      TextPainter tpVal = TextPainter(text: TextSpan(text: valorStr, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF0077B6))), textDirection: TextDirection.ltr)..layout();
+      tpVal.paint(canvas, Offset(cx - (tpVal.width / 2), barY - 16));
+
+      TextPainter tpLbl = TextPainter(text: TextSpan(text: meses[i], style: TextStyle(fontSize: 10, color: Colors.grey.shade700, fontWeight: FontWeight.bold)), textDirection: TextDirection.ltr)..layout();
+      tpLbl.paint(canvas, Offset(cx - (tpLbl.width / 2), h + 6));
+    }
+  }
+  @override bool shouldRepaint(covariant CustomPainter old) => true;
+}
+
+// ===========================================================================
+// COMPONENTE: GRÁFICA DONA
+// ===========================================================================
 class DonutChartWidget extends StatelessWidget {
   final Map<String, double> datos;
   final List<Color> colores;
