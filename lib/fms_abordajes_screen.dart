@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'dart:io';
+import 'dart:html' as html; // <-- Importación necesaria para descargar archivos en Flutter Web
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +12,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:http/http.dart' as http;
-import 'api_service.dart';
+import 'api_service.dart'; // Asegúrate de tener este archivo en tu proyecto
 
 class FmsAbordajesScreen extends StatefulWidget {
   final VoidCallback? onToggleSidebar;
@@ -38,12 +39,21 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
   List<String> _listaOpms = ['Todos'];
   List<String> _listaAreasLogistica = [];
 
+  // Opciones de filtro
+  final List<String> _listaEstados = ['Todos', 'PENDIENTE', 'REALIZADO'];
+  final List<String> _listaMeses = [
+    'Todos', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+  // Variables de Estado de Filtros
   String _busquedaTexto = '';
   String _supervisorSel = 'Todos';
   String _opmSel = 'Todos';
   String _estadoSel = 'Todos';
-
-  final List<String> _listaEstados = ['Todos', 'PENDIENTE', 'REALIZADO'];
+  String _mesSel = 'Todos';
+  DateTime? _fechaDesde;
+  DateTime? _fechaHasta;
 
   int _registrosPorPagina = 10;
   int _paginaActual = 1;
@@ -60,6 +70,9 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
     super.dispose();
   }
 
+  // =========================================================================
+  // COMPRESIÓN DE IMAGEN
+  // =========================================================================
   Future<Uint8List> _comprimirBytesMax15KB(Uint8List originalBytes, {int maxKB = 15, int startWidth = 800}) async {
     int maxBytes = maxKB * 1024;
     if (originalBytes.lengthInBytes <= maxBytes) return originalBytes;
@@ -87,6 +100,9 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
     return bytes;
   }
 
+  // =========================================================================
+  // LECTURA Y ORDENAMIENTO DE DATOS
+  // =========================================================================
   Future<void> _cargarDatosBD() async {
     setState(() {
       _cargando = true;
@@ -117,7 +133,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
           }
         }
       } catch (e) {
-        debugPrint('Error leyendo areas_logistica (Silenciado): $e');
+        debugPrint('Error leyendo areas_logistica: $e');
       }
 
       final datosRaw = await ApiService.consultar('fms', 'fms_reporte');
@@ -150,12 +166,20 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
         }
       }
 
+      // ORDENAR: PENDIENTES ARRIBA, Y LUEGO FECHAS DE MAYOR A MENOR
       datosProcesados.sort((a, b) {
         String estA = (a['abordaje']?.toString() ?? '').trim().toUpperCase();
         String estB = (b['abordaje']?.toString() ?? '').trim().toUpperCase();
+
+        // 1. Pendientes primero
         if (estA == 'PENDIENTE' && estB != 'PENDIENTE') return -1;
         if (estA != 'PENDIENTE' && estB == 'PENDIENTE') return 1;
-        return 0;
+
+        // 2. Fechas de más recientes a más antiguas
+        DateTime fechaA = DateTime.tryParse(a['fecha']?.toString() ?? '') ?? DateTime(2000);
+        DateTime fechaB = DateTime.tryParse(b['fecha']?.toString() ?? '') ?? DateTime(2000);
+
+        return fechaB.compareTo(fechaA);
       });
 
       List<String> supList = superSet.toList()..sort();
@@ -180,6 +204,19 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
     }
   }
 
+  // =========================================================================
+  // LÓGICA DE FILTROS
+  // =========================================================================
+  DateTime? _parseDateOnly(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty || dateStr == 'null' || dateStr == '-') return null;
+    try {
+      DateTime dt = DateTime.parse(dateStr.split('T')[0]);
+      return DateTime(dt.year, dt.month, dt.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
   String _determinarEstado(Map<String, dynamic> row) {
     String abordaje = (row['abordaje']?.toString() ?? '').trim().toUpperCase();
     if (abordaje == 'REALIZADO') return 'REALIZADO';
@@ -197,6 +234,23 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
 
         String opmFila = (row['nombre']?.toString() ?? row['operador']?.toString() ?? '').trim().toUpperCase();
         if (_opmSel != 'Todos' && opmFila != _opmSel) return false;
+
+        DateTime? rowDate = _parseDateOnly(row['fecha']?.toString());
+
+        if (_mesSel != 'Todos') {
+          int mesIndex = _listaMeses.indexOf(_mesSel);
+          if (rowDate == null || rowDate.month != mesIndex) return false;
+        }
+
+        if (_fechaDesde != null) {
+          DateTime fromDate = DateTime(_fechaDesde!.year, _fechaDesde!.month, _fechaDesde!.day);
+          if (rowDate == null || rowDate.isBefore(fromDate)) return false;
+        }
+
+        if (_fechaHasta != null) {
+          DateTime toDate = DateTime(_fechaHasta!.year, _fechaHasta!.month, _fechaHasta!.day);
+          if (rowDate == null || rowDate.isAfter(toDate)) return false;
+        }
 
         if (_busquedaTexto.isNotEmpty) {
           String txt = _busquedaTexto.toLowerCase();
@@ -220,17 +274,298 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       _supervisorSel = 'Todos';
       _opmSel = 'Todos';
       _estadoSel = 'Todos';
+      _mesSel = 'Todos';
+      _fechaDesde = null;
+      _fechaHasta = null;
       _aplicarFiltros();
     });
   }
 
-  // =========================================================================
-  // SECCIÓN: ESTADÍSTICAS Y NUEVAS TABLAS DE RENDIMIENTO
-  // =========================================================================
+  Future<void> _seleccionarFechaFiltro(BuildContext context, bool esDesde) async {
+    DateTime inicial = DateTime.now();
+    if (esDesde && _fechaDesde != null) inicial = _fechaDesde!;
+    if (!esDesde && _fechaHasta != null) inicial = _fechaHasta!;
 
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: inicial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                  primary: Color(0xFF0D47A1),
+                  onPrimary: Colors.white,
+                  onSurface: Colors.black
+              )
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        if (esDesde) {
+          _fechaDesde = picked;
+        } else {
+          _fechaHasta = picked;
+        }
+        _aplicarFiltros();
+      });
+    }
+  }
+
+  // =========================================================================
+  // DESCARGAR EXCEL (CSV) - VERSIÓN FLUTTER WEB
+  // =========================================================================
+  Future<void> _descargarExcel() async {
+    if (_abordajesFiltrados.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay datos para exportar'), backgroundColor: Colors.orange));
+      return;
+    }
+
+    try {
+      StringBuffer sb = StringBuffer();
+      // El caracter \uFEFF (BOM) asegura que Excel lea correctamente tildes y caracteres especiales en UTF-8
+      sb.write('\uFEFF');
+      sb.writeln("Fecha Evento,Maquina,Area,Evento,Supervisor,Operador,Estado,Accion Preventiva,Accion Correctiva");
+
+      for (var row in _abordajesFiltrados) {
+        String fecha = _formatearFechaCorta(row['fecha']?.toString());
+        String maquina = (row['maquina']?.toString() ?? '-').replaceAll(',', ' ');
+        String area = (row['area']?.toString() ?? '-').replaceAll(',', ' ');
+        String evento = (row['evento']?.toString() ?? '-').replaceAll(',', ' ');
+        String supervisor = (row['supervisor']?.toString() ?? '-').replaceAll(',', ' ');
+        String opm = (row['nombre']?.toString() ?? row['operador']?.toString() ?? '-').replaceAll(',', ' ');
+        String estado = _determinarEstado(row);
+
+        String accionPrev = (row['accion_preventiva']?.toString() ?? '-').replaceAll(',', ' ').replaceAll('\n', ' ');
+        String accionCorr = (row['accion_correctiva']?.toString() ?? '-').replaceAll(',', ' ').replaceAll('\n', ' ');
+
+        sb.writeln("$fecha,$maquina,$area,$evento,$supervisor,$opm,$estado,$accionPrev,$accionCorr");
+      }
+
+      // LÓGICA DE DESCARGA PARA NAVEGADOR (WEB)
+      final bytes = utf8.encode(sb.toString());
+      final blob = html.Blob([bytes]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute("download", "Reporte_Abordajes_${DateTime.now().millisecondsSinceEpoch}.csv")
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('✅ Descarga del reporte iniciada'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 3)
+            )
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error exportando: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  // =========================================================================
+  // SECCIÓN: GRÁFICAS DE CUMPLIMIENTO (MES Y EVENTO)
+  // =========================================================================
+  Widget _buildSeccionGraficos() {
+    Map<int, Map<String, dynamic>> mesStats = {};
+    Map<String, Map<String, dynamic>> eventStats = {};
+
+    for (var row in _abordajesFiltrados) {
+      String estado = _determinarEstado(row);
+      DateTime? dt = _parseDateOnly(row['fecha']?.toString());
+      String evento = (row['evento']?.toString() ?? 'OTRO').trim().toUpperCase();
+
+      // Procesar Meses
+      if (dt != null) {
+        int m = dt.month;
+        mesStats.putIfAbsent(m, () => {'realizados': 0, 'pendientes': 0, 'total': 0});
+        mesStats[m]!['total'] += 1;
+        if (estado == 'REALIZADO') {
+          mesStats[m]!['realizados'] += 1;
+        } else {
+          mesStats[m]!['pendientes'] += 1;
+        }
+      }
+
+      // Procesar Eventos
+      eventStats.putIfAbsent(evento, () => {'realizados': 0, 'pendientes': 0, 'total': 0});
+      eventStats[evento]!['total'] += 1;
+      if (estado == 'REALIZADO') {
+        eventStats[evento]!['realizados'] += 1;
+      } else {
+        eventStats[evento]!['pendientes'] += 1;
+      }
+    }
+
+    // Ordenar
+    List<int> mesesOrdenados = mesStats.keys.toList()..sort();
+    List<String> eventosOrdenados = eventStats.keys.toList()..sort((a, b) => eventStats[b]!['total'].compareTo(eventStats[a]!['total']));
+
+    Widget graficoMeses = _buildContenedorGrafico(
+      titulo: 'Cumplimiento por Mes',
+      items: mesesOrdenados.map((m) {
+        var s = mesStats[m]!;
+        return _buildBarraHorizontal(_listaMeses[m], s['realizados'], s['pendientes'], s['total']);
+      }).toList(),
+    );
+
+    Widget graficoEventos = _buildContenedorGrafico(
+      titulo: 'Cumplimiento por Evento (Top)',
+      items: eventosOrdenados.take(8).map((e) {
+        var s = eventStats[e]!;
+        return _buildBarraHorizontal(e, s['realizados'], s['pendientes'], s['total']);
+      }).toList(),
+    );
+
+    return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth < 900) {
+        return Column(
+            children: [graficoMeses, const SizedBox(height: 20), graficoEventos]
+        );
+      } else {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: graficoMeses),
+            const SizedBox(width: 20),
+            Expanded(child: graficoEventos),
+          ],
+        );
+      }
+    });
+  }
+
+  Widget _buildContenedorGrafico({required String titulo, required List<Widget> items}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300)
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                  child: Text(
+                      titulo,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                      overflow: TextOverflow.ellipsis
+                  )
+              ),
+              Row(
+                children: [
+                  _leyendaColor(Colors.green.shade500, 'Realizado'),
+                  const SizedBox(width: 10),
+                  _leyendaColor(Colors.orange.shade400, 'Pendiente'),
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (items.isEmpty)
+            const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No hay datos para graficar', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
+            )
+          else
+            ...items,
+        ],
+      ),
+    );
+  }
+
+  Widget _leyendaColor(Color color, String texto) {
+    return Row(
+      children: [
+        Container(
+            width: 12, height: 12,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))
+        ),
+        const SizedBox(width: 4),
+        Text(texto, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black54)),
+      ],
+    );
+  }
+
+  Widget _buildBarraHorizontal(String label, int realizados, int pendientes, int total) {
+    double pctRealizado = total == 0 ? 0 : (realizados / total) * 100;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 110,
+              child: Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87),
+                  overflow: TextOverflow.ellipsis
+              )
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                height: 18,
+                color: Colors.grey.shade200,
+                child: Row(
+                  children: [
+                    if (realizados > 0)
+                      Expanded(
+                          flex: realizados,
+                          child: Container(
+                              color: Colors.green.shade500,
+                              child: Center(
+                                  child: Text('$realizados', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold))
+                              )
+                          )
+                      ),
+                    if (pendientes > 0)
+                      Expanded(
+                          flex: pendientes,
+                          child: Container(
+                              color: Colors.orange.shade400,
+                              child: Center(
+                                  child: Text('$pendientes', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold))
+                              )
+                          )
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+              width: 60,
+              child: Text(
+                  '${pctRealizado.toStringAsFixed(1)}%',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.black87)
+              )
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // SECCIÓN: TARJETAS Y TABLAS DE RENDIMIENTO TOP 10
+  // =========================================================================
   List<Map<String, dynamic>> _obtenerEstadisticasAgrupadas(String tipo) {
     Map<String, Map<String, dynamic>> mapa = {};
-
     for (var row in _abordajesFiltrados) {
       String clave = '';
       if (tipo == 'opm') {
@@ -243,17 +578,15 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       if (!mapa.containsKey(clave)) {
         mapa[clave] = {'nombre': clave, 'total': 0, 'realizados': 0, 'pendientes': 0};
       }
-
       mapa[clave]!['total'] = mapa[clave]!['total'] + 1;
+
       if (_determinarEstado(row) == 'REALIZADO') {
         mapa[clave]!['realizados'] = mapa[clave]!['realizados'] + 1;
       } else {
         mapa[clave]!['pendientes'] = mapa[clave]!['pendientes'] + 1;
       }
     }
-
     List<Map<String, dynamic>> lista = mapa.values.toList();
-    // Ordenar de mayor a menor según el total de abordajes
     lista.sort((a, b) => b['total'].compareTo(a['total']));
     return lista;
   }
@@ -267,8 +600,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
     return LayoutBuilder(builder: (context, constraints) {
       double cardWidth = constraints.maxWidth < 600 ? (constraints.maxWidth / 2) - 8 : (constraints.maxWidth / 4) - 12;
       return Wrap(
-        spacing: 16,
-        runSpacing: 16,
+        spacing: 16, runSpacing: 16,
         children: [
           _buildInfoCard('Total Abordajes', total.toString(), Icons.assignment_rounded, Colors.blue, cardWidth),
           _buildInfoCard('Realizados', realizados.toString(), Icons.check_circle_rounded, Colors.green, cardWidth),
@@ -284,10 +616,10 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       width: width,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))]
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,11 +627,17 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(titulo, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey), overflow: TextOverflow.ellipsis)),
+              Expanded(
+                  child: Text(
+                      titulo,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis
+                  )
+              ),
               Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: color.shade50, borderRadius: BorderRadius.circular(8)),
-                child: Icon(icono, size: 20, color: color),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: color.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icono, size: 20, color: color)
               )
             ],
           ),
@@ -319,105 +657,122 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
 
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth < 900) {
-        return Column(
-          children: [supWidget, const SizedBox(height: 20), opmWidget],
-        );
+        return Column(children: [supWidget, const SizedBox(height: 20), opmWidget]);
       } else {
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: supWidget),
-            const SizedBox(width: 20),
-            Expanded(child: opmWidget),
-          ],
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [Expanded(child: supWidget), const SizedBox(width: 20), Expanded(child: opmWidget)]
         );
       }
     });
   }
 
-  Widget _buildTablaDesempeno(String titulo, String cabeceraEntidad, List<Map<String, dynamic>> datos) {
+  Widget _buildTablaDesempeno(String titulo, String cabeceraEntidad, List<Map<String, dynamic>> datosCompletos) {
     int sumTotal = 0, sumRealizados = 0, sumPendientes = 0;
-
-    for (var d in datos) {
+    for (var d in datosCompletos) {
       sumTotal += d['total'] as int;
       sumRealizados += d['realizados'] as int;
       sumPendientes += d['pendientes'] as int;
     }
     double totalAvance = sumTotal == 0 ? 0 : (sumRealizados / sumTotal) * 100;
 
+    List<Map<String, dynamic>> datos = datosCompletos.take(10).toList();
+
+    final colWidths = const {
+      0: FlexColumnWidth(3),
+      1: FlexColumnWidth(1),
+      2: FlexColumnWidth(1),
+      3: FlexColumnWidth(1),
+      4: FlexColumnWidth(1.2),
+    };
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade300)
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(titulo, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+          Text('$titulo (Top 10)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
           const SizedBox(height: 16),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(1),
-                3: FlexColumnWidth(1),
-                4: FlexColumnWidth(1.2),
-              },
+            child: Column(
               children: [
-                // Header (Fondo oscuro)
-                TableRow(
-                  decoration: const BoxDecoration(color: Color(0xFF1E293B)),
+                // CABECERA FIJA
+                Table(
+                  columnWidths: colWidths,
                   children: [
-                    _headerTablaResumen(cabeceraEntidad, centrar: false),
-                    _headerTablaResumen('TOTAL'),
-                    _headerTablaResumen('REALIZADOS'),
-                    _headerTablaResumen('PENDIENTES'),
-                    _headerTablaResumen('AVANCE %'),
+                    TableRow(
+                      decoration: const BoxDecoration(color: Color(0xFF1E293B)),
+                      children: [
+                        _headerTablaResumen(cabeceraEntidad, centrar: false),
+                        _headerTablaResumen('TOTAL'),
+                        _headerTablaResumen('REALIZADOS'),
+                        _headerTablaResumen('PENDIENTES'),
+                        _headerTablaResumen('AVANCE %')
+                      ],
+                    ),
                   ],
                 ),
-                // Data Rows
-                if (datos.isEmpty)
-                  TableRow(
-                      decoration: const BoxDecoration(color: Colors.white),
+                // CUERPO SCROLLABLE
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Table(
+                      columnWidths: colWidths,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Text('No hay datos', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                        ),
-                        const SizedBox(), const SizedBox(), const SizedBox(), const SizedBox(),
-                      ]
-                  )
-                else
-                  ...datos.map((d) {
-                    double pct = d['total'] == 0 ? 0 : (d['realizados'] / d['total']) * 100;
-                    return TableRow(
-                      decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border(bottom: BorderSide(color: Colors.grey.shade200))
-                      ),
-                      children: [
-                        _celdaTablaResumen(d['nombre'], centrar: false, isBold: true),
-                        _celdaTablaResumen(d['total'].toString()),
-                        _celdaTablaResumen(d['realizados'].toString()),
-                        _celdaTablaResumen(d['pendientes'].toString()),
-                        _celdaTablaResumen('${pct.toStringAsFixed(1)}%'),
+                        if (datos.isEmpty)
+                          TableRow(
+                              decoration: const BoxDecoration(color: Colors.white),
+                              children: [
+                                Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Text('No hay datos', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))
+                                ),
+                                const SizedBox(), const SizedBox(), const SizedBox(), const SizedBox()
+                              ]
+                          )
+                        else
+                          ...datos.map((d) {
+                            double pct = d['total'] == 0 ? 0 : (d['realizados'] / d['total']) * 100;
+                            return TableRow(
+                              decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border(bottom: BorderSide(color: Colors.grey.shade200))
+                              ),
+                              children: [
+                                _celdaTablaResumen(d['nombre'], centrar: false, isBold: true),
+                                _celdaTablaResumen(d['total'].toString()),
+                                _celdaTablaResumen(d['realizados'].toString()),
+                                _celdaTablaResumen(d['pendientes'].toString()),
+                                _celdaTablaResumen('${pct.toStringAsFixed(1)}%')
+                              ],
+                            );
+                          }),
                       ],
-                    );
-                  }),
-                // Footer (Fila de Totales)
+                    ),
+                  ),
+                ),
+                // FOOTER FIJO
                 if (datos.isNotEmpty)
-                  TableRow(
-                    decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
+                  Table(
+                    columnWidths: colWidths,
                     children: [
-                      _celdaTablaResumen('TOTALES', centrar: true, isBold: true),
-                      _celdaTablaResumen(sumTotal.toString(), isBold: true),
-                      _celdaTablaResumen(sumRealizados.toString(), isBold: true),
-                      _celdaTablaResumen(sumPendientes.toString(), isBold: true),
-                      _celdaTablaResumen('${totalAvance.toStringAsFixed(1)}%', isBold: true),
+                      TableRow(
+                        decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
+                        children: [
+                          _celdaTablaResumen('TOTALES GLOBALES', centrar: true, isBold: true),
+                          _celdaTablaResumen(sumTotal.toString(), isBold: true),
+                          _celdaTablaResumen(sumRealizados.toString(), isBold: true),
+                          _celdaTablaResumen(sumPendientes.toString(), isBold: true),
+                          _celdaTablaResumen('${totalAvance.toStringAsFixed(1)}%', isBold: true)
+                        ],
+                      ),
                     ],
                   ),
               ],
@@ -430,40 +785,30 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
 
   Widget _headerTablaResumen(String text, {bool centrar = true}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-      child: Text(
-          text,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-          textAlign: centrar ? TextAlign.center : TextAlign.left
-      ),
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Text(text, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white), textAlign: centrar ? TextAlign.center : TextAlign.left)
     );
   }
 
   Widget _celdaTablaResumen(String text, {bool centrar = true, bool isBold = false}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-      child: Text(
-          text,
-          style: TextStyle(fontSize: 11, color: const Color(0xFF334155), fontWeight: isBold ? FontWeight.bold : FontWeight.normal),
-          textAlign: centrar ? TextAlign.center : TextAlign.left
-      ),
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Text(text, style: TextStyle(fontSize: 11, color: const Color(0xFF334155), fontWeight: isBold ? FontWeight.bold : FontWeight.normal), textAlign: centrar ? TextAlign.center : TextAlign.left)
     );
   }
 
   // =========================================================================
-
+  // MANEJO DE PDF Y MODALES DE DETALLE
+  // =========================================================================
   Future<pw.ImageProvider?> _obtenerImagenPdf(String? url) async {
     if (url == null || url.trim().isEmpty || url == 'null') return null;
     try {
       if (url.startsWith('data:image')) {
-        final base64str = url.split(',').last;
-        final bytes = base64Decode(base64str);
-        return pw.MemoryImage(bytes);
+        return pw.MemoryImage(base64Decode(url.split(',').last));
       } else {
         return await networkImage(url);
       }
     } catch (e) {
-      debugPrint('Error cargando imagen para PDF (CORS/Timeout): $e');
       return null;
     }
   }
@@ -476,22 +821,13 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       final doc = pw.Document();
 
       pw.ImageProvider? imgEvidencia;
-      try {
-        imgEvidencia = await _obtenerImagenPdf(row['foto_abordaje']?.toString()).timeout(const Duration(seconds: 5));
-      } catch (_) {}
+      try { imgEvidencia = await _obtenerImagenPdf(row['foto_abordaje']?.toString()).timeout(const Duration(seconds: 5)); } catch (_) {}
 
       pw.ImageProvider? imgFirma;
-      try {
-        imgFirma = await _obtenerImagenPdf(row['firma_opm']?.toString()).timeout(const Duration(seconds: 5));
-      } catch (_) {}
+      try { imgFirma = await _obtenerImagenPdf(row['firma_opm']?.toString()).timeout(const Duration(seconds: 5)); } catch (_) {}
 
       pw.ImageProvider? imgLogo;
-      try {
-        final ByteData data = await rootBundle.load('assets/icono_ol.png');
-        imgLogo = pw.MemoryImage(data.buffer.asUint8List());
-      } catch (e) {
-        debugPrint('No se encontró el logo local: $e');
-      }
+      try { imgLogo = pw.MemoryImage((await rootBundle.load('assets/icono_ol.png')).buffer.asUint8List()); } catch (e) { debugPrint('Logo local no encontrado'); }
 
       String fechaOcurrencia = _formatearFechaCorta(row['fecha']?.toString());
       String fechaAbordaje = _formatearFechaHora(row['fecha_hora_abordaje']?.toString());
@@ -524,28 +860,19 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   columnWidths: {
                     0: const pw.FlexColumnWidth(1.2),
                     1: const pw.FlexColumnWidth(3.5),
-                    2: const pw.FlexColumnWidth(1.5),
+                    2: const pw.FlexColumnWidth(1.5)
                   },
                   children: [
                     pw.TableRow(
                         children: [
-                          pw.Container(
-                            height: 60,
-                            padding: const pw.EdgeInsets.all(5),
-                            alignment: pw.Alignment.center,
-                            child: imgLogo != null ? pw.Image(imgLogo, fit: pw.BoxFit.contain) : pw.SizedBox(),
-                          ),
-                          pw.Container(
-                            alignment: pw.Alignment.center,
-                            height: 60,
-                            child: pw.Text('ABORDAJE DE OPERADORES DE MONTACARGAS (FMS)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.grey600), textAlign: pw.TextAlign.center),
-                          ),
+                          pw.Container(height: 60, padding: const pw.EdgeInsets.all(5), alignment: pw.Alignment.center, child: imgLogo != null ? pw.Image(imgLogo, fit: pw.BoxFit.contain) : pw.SizedBox()),
+                          pw.Container(alignment: pw.Alignment.center, height: 60, child: pw.Text('ABORDAJE DE OPERADORES DE MONTACARGAS (FMS)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.grey600), textAlign: pw.TextAlign.center)),
                           pw.Column(
                               crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                               children: [
                                 pw.Container(padding: const pw.EdgeInsets.all(4), decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide())), child: pw.Text('Código: CO-EL-SST-FT-48', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700))),
                                 pw.Container(padding: const pw.EdgeInsets.all(4), decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide())), child: pw.Text('Versión: 03', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700))),
-                                pw.Container(padding: const pw.EdgeInsets.all(4), child: pw.Text('Fecha: 25/03/2025', style: const pw.TextStyle(fontSize: 7, color: PdfColors.blue))),
+                                pw.Container(padding: const pw.EdgeInsets.all(4), child: pw.Text('Fecha: 25/03/2025', style: const pw.TextStyle(fontSize: 7, color: PdfColors.blue)))
                               ]
                           )
                         ]
@@ -555,31 +882,31 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
               pw.SizedBox(height: 20),
 
               pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.black, width: 1),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(1.3),
-                  1: const pw.FlexColumnWidth(2),
-                  2: const pw.FlexColumnWidth(1.3),
-                  3: const pw.FlexColumnWidth(2),
-                },
-                children: [
-                  pw.TableRow(children: [celdaT('Fecha ocurrencia:'), celdaV(fechaOcurrencia), celdaT('Fecha abordaje:'), celdaV(fechaAbordaje)]),
-                  pw.TableRow(children: [celdaT('Turno:'), celdaV(turno), celdaT('Opm:'), celdaV(opm)]),
-                  pw.TableRow(children: [celdaT('Supervisor:'), celdaV(supervisor), celdaT('Origen opm:'), celdaV(origenOpm)]),
-                  pw.TableRow(children: [celdaT('Evento:'), celdaV(evento), celdaT('Máquina:'), celdaV(maquina)]),
-                  pw.TableRow(children: [celdaT('Lugar:'), celdaV(lugar), celdaT('Area:'), celdaV(area)]),
-                ],
+                  border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(1.3),
+                    1: const pw.FlexColumnWidth(2),
+                    2: const pw.FlexColumnWidth(1.3),
+                    3: const pw.FlexColumnWidth(2)
+                  },
+                  children: [
+                    pw.TableRow(children: [celdaT('Fecha ocurrencia:'), celdaV(fechaOcurrencia), celdaT('Fecha abordaje:'), celdaV(fechaAbordaje)]),
+                    pw.TableRow(children: [celdaT('Turno:'), celdaV(turno), celdaT('Opm:'), celdaV(opm)]),
+                    pw.TableRow(children: [celdaT('Supervisor:'), celdaV(supervisor), celdaT('Origen opm:'), celdaV(origenOpm)]),
+                    pw.TableRow(children: [celdaT('Evento:'), celdaV(evento), celdaT('Máquina:'), celdaV(maquina)]),
+                    pw.TableRow(children: [celdaT('Lugar:'), celdaV(lugar), celdaT('Area:'), celdaV(area)])
+                  ]
               ),
               pw.SizedBox(height: 20),
 
               pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.black, width: 1),
-                  columnWidths: { 0: const pw.FlexColumnWidth(1.3), 1: const pw.FlexColumnWidth(5.3) },
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(1.3),
+                    1: const pw.FlexColumnWidth(5.3)
+                  },
                   children: [
-                    pw.TableRow(children: [
-                      pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Acción preventiva', style: boldStyle)),
-                      pw.Container(padding: const pw.EdgeInsets.all(6), constraints: const pw.BoxConstraints(minHeight: 40), alignment: pw.Alignment.topLeft, child: pw.Text(accionPrev, style: regularStyle))
-                    ])
+                    pw.TableRow(children: [pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Acción preventiva', style: boldStyle)), pw.Container(padding: const pw.EdgeInsets.all(6), constraints: const pw.BoxConstraints(minHeight: 40), alignment: pw.Alignment.topLeft, child: pw.Text(accionPrev, style: regularStyle))])
                   ]
               ),
               pw.SizedBox(height: 20),
@@ -587,33 +914,16 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
               pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.black, width: 1),
                   children: [
-                    pw.TableRow(children: [
-                      pw.Container(
-                          constraints: const pw.BoxConstraints(minHeight: 80),
-                          padding: const pw.EdgeInsets.all(6),
-                          alignment: pw.Alignment.topLeft,
-                          child: pw.Column(
-                              crossAxisAlignment: pw.CrossAxisAlignment.start,
-                              children: [
-                                pw.Text('Descripcion:', style: boldStyle),
-                                pw.SizedBox(height: 6),
-                                pw.Text(descripcion, style: regularStyle),
-                              ]
-                          )
-                      )
-                    ])
+                    pw.TableRow(children: [pw.Container(constraints: const pw.BoxConstraints(minHeight: 80), padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.topLeft, child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Text('Descripcion:', style: boldStyle), pw.SizedBox(height: 6), pw.Text(descripcion, style: regularStyle)]))])
                   ]
               ),
               pw.SizedBox(height: 20),
 
               pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.black, width: 1),
-                  columnWidths: { 0: const pw.FlexColumnWidth(1.3), 1: const pw.FlexColumnWidth(5.3) },
+                  columnWidths: {0: const pw.FlexColumnWidth(1.3), 1: const pw.FlexColumnWidth(5.3)},
                   children: [
-                    pw.TableRow(children: [
-                      pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Acción correctiva:', style: boldStyle)),
-                      pw.Container(padding: const pw.EdgeInsets.all(6), constraints: const pw.BoxConstraints(minHeight: 40), alignment: pw.Alignment.topLeft, child: pw.Text(accionCorr, style: regularStyle))
-                    ])
+                    pw.TableRow(children: [pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Acción correctiva:', style: boldStyle)), pw.Container(padding: const pw.EdgeInsets.all(6), constraints: const pw.BoxConstraints(minHeight: 40), alignment: pw.Alignment.topLeft, child: pw.Text(accionCorr, style: regularStyle))])
                   ]
               ),
               pw.SizedBox(height: 20),
@@ -621,42 +931,17 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
               pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.black, width: 1),
                   children: [
-                    pw.TableRow(children: [
-                      pw.Container(
-                          padding: const pw.EdgeInsets.all(6),
-                          alignment: pw.Alignment.center,
-                          child: pw.Text('EVIDENCIA ABORDAJE', style: boldStyle)
-                      )
-                    ]),
-                    pw.TableRow(children: [
-                      pw.Container(
-                          height: 250,
-                          padding: const pw.EdgeInsets.all(10),
-                          alignment: pw.Alignment.center,
-                          child: imgEvidencia != null
-                              ? pw.Image(imgEvidencia, fit: pw.BoxFit.contain)
-                              : pw.Text('Sin evidencia fotográfica reportada.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey))
-                      )
-                    ])
+                    pw.TableRow(children: [pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.center, child: pw.Text('EVIDENCIA ABORDAJE', style: boldStyle))]),
+                    pw.TableRow(children: [pw.Container(height: 250, padding: const pw.EdgeInsets.all(10), alignment: pw.Alignment.center, child: imgEvidencia != null ? pw.Image(imgEvidencia, fit: pw.BoxFit.contain) : pw.Text('Sin evidencia fotográfica reportada.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)))])
                   ]
               ),
               pw.SizedBox(height: 20),
 
               pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.black, width: 1),
-                  columnWidths: { 0: const pw.FlexColumnWidth(1.3), 1: const pw.FlexColumnWidth(5.3) },
+                  columnWidths: {0: const pw.FlexColumnWidth(1.3), 1: const pw.FlexColumnWidth(5.3)},
                   children: [
-                    pw.TableRow(children: [
-                      pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Firma opm:', style: boldStyle)),
-                      pw.Container(
-                          padding: const pw.EdgeInsets.all(6),
-                          height: 80,
-                          alignment: pw.Alignment.centerLeft,
-                          child: imgFirma != null
-                              ? pw.Image(imgFirma, fit: pw.BoxFit.contain)
-                              : pw.Text('Sin firma reportada.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey))
-                      )
-                    ])
+                    pw.TableRow(children: [pw.Container(padding: const pw.EdgeInsets.all(6), alignment: pw.Alignment.centerLeft, child: pw.Text('Firma opm:', style: boldStyle)), pw.Container(padding: const pw.EdgeInsets.all(6), height: 80, alignment: pw.Alignment.centerLeft, child: imgFirma != null ? pw.Image(imgFirma, fit: pw.BoxFit.contain) : pw.Text('Sin firma reportada.', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)))])
                   ]
               ),
             ];
@@ -665,19 +950,12 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       );
 
       final bytesPdf = await doc.save();
-
       String fechaFormateadaArchivo = fechaAbordaje.replaceAll(RegExp(r'[/: ]'), '_');
       String opmFormateadoArchivo = opm.replaceAll(' ', '_').replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
 
-      await Printing.sharePdf(
-        bytes: bytesPdf,
-        filename: 'Abordaje_${fechaFormateadaArchivo}_$opmFormateadoArchivo.pdf',
-      );
-
+      await Printing.sharePdf(bytes: bytesPdf, filename: 'Abordaje_${fechaFormateadaArchivo}_$opmFormateadoArchivo.pdf');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generando PDF: $e'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generando PDF: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() { _idGenerandoPdf = null; });
     }
@@ -700,12 +978,10 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
 
     File? fotoEvidenciaFile;
     String? fotoEvidenciaNombre;
-
     List<Offset?> puntosFirma = [];
     final GlobalKey firmaKey = GlobalKey();
     bool tieneFirmaPrevia = row['firma_opm'] != null && row['firma_opm'].toString().trim().isNotEmpty && row['firma_opm'] != 'null';
     bool tieneFotoPrevia = row['foto_abordaje'] != null && row['foto_abordaje'].toString().trim().isNotEmpty && row['foto_abordaje'] != 'null';
-
     bool guardandoModal = false;
 
     Future<void> capturarFotoAbordaje(StateSetter setModalState) async {
@@ -747,21 +1023,21 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: const Color(0xFF0D47A1).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : Icons.manage_search_rounded, color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Investigación y Abordaje', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                  Text(esSoloLectura ? 'Reporte Gestionado (Solo Lectura)' : 'Complete los detalles del reporte', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                ],
-                              ),
-                            ],
+                              children: [
+                                Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(color: const Color(0xFF0D47A1).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                    child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : Icons.manage_search_rounded, color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22)
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Investigación y Abordaje', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                      Text(esSoloLectura ? 'Reporte Gestionado (Solo Lectura)' : 'Complete los detalles del reporte', style: const TextStyle(fontSize: 11, color: Colors.grey))
+                                    ]
+                                ),
+                              ]
                           ),
                           IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop()),
                         ],
@@ -774,64 +1050,65 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                         child: Column(
                           children: [
                             Row(
-                              children: [
-                                const Icon(Icons.info_outline_rounded, size: 16, color: Colors.blueGrey),
-                                const SizedBox(width: 6),
-                                const Text('Datos Originales', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                const Spacer(),
-                                _dataCellEstado(estado),
-                              ],
+                                children: [
+                                  const Icon(Icons.info_outline_rounded, size: 16, color: Colors.blueGrey),
+                                  const SizedBox(width: 6),
+                                  const Text('Datos Originales', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                                  const Spacer(),
+                                  _dataCellEstado(estado)
+                                ]
                             ),
                             const Divider(),
                             Wrap(
-                              spacing: 16,
-                              runSpacing: 8,
-                              children: [
-                                SizedBox(width: 120, child: _buildDatoEstatico('Fecha Evento:', _formatearFechaCorta(row['fecha']?.toString()))),
-                                SizedBox(width: 80, child: _buildDatoEstatico('Turno:', row['turno']?.toString() ?? '-')),
-                                SizedBox(width: 100, child: _buildDatoEstatico('Máquina:', row['maquina']?.toString() ?? '-')),
-                                SizedBox(width: 120, child: _buildDatoEstatico('Área:', row['area']?.toString() ?? '-')),
-                                SizedBox(width: 200, child: _buildDatoEstatico('Evento:', row['evento']?.toString() ?? '-')),
-                              ],
+                                spacing: 16,
+                                runSpacing: 8,
+                                children: [
+                                  SizedBox(width: 120, child: _buildDatoEstatico('Fecha Evento:', _formatearFechaCorta(row['fecha']?.toString()))),
+                                  SizedBox(width: 80, child: _buildDatoEstatico('Turno:', row['turno']?.toString() ?? '-')),
+                                  SizedBox(width: 100, child: _buildDatoEstatico('Máquina:', row['maquina']?.toString() ?? '-')),
+                                  SizedBox(width: 120, child: _buildDatoEstatico('Área:', row['area']?.toString() ?? '-')),
+                                  SizedBox(width: 200, child: _buildDatoEstatico('Evento:', row['evento']?.toString() ?? '-'))
+                                ]
                             ),
                             const SizedBox(height: 8),
                             Row(
-                              children: [
-                                Expanded(child: _buildDatoEstatico('Supervisor en Turno:', row['supervisor']?.toString() ?? '-')),
-                                Expanded(child: _buildDatoEstatico('Operador (OPM):', '$opmNombre ($origenOpm)')),
-                              ],
+                                children: [
+                                  Expanded(child: _buildDatoEstatico('Supervisor en Turno:', row['supervisor']?.toString() ?? '-')),
+                                  Expanded(child: _buildDatoEstatico('Operador (OPM):', '$opmNombre ($origenOpm)'))
+                                ]
                             ),
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 20),
                       const Text('Formulario de Abordaje', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
                       const SizedBox(height: 12),
 
                       if (isMobileModal) ...[
                         _buildSelectorCampoModal(
-                          label: 'Lugar Exacto de Ocurrencia *',
-                          hint: 'Seleccionar módulo/lugar...',
-                          controller: lugarCtrl,
-                          readOnly: esSoloLectura,
-                          onTap: esSoloLectura ? () {} : () => _abrirBuscadorGenericoFormulario(dialogContext: dialogContext, titulo: 'Lugar Exacto', opciones: _listaAreasLogistica, controller: lugarCtrl, setModalState: setModalState),
+                            label: 'Lugar Exacto de Ocurrencia *',
+                            hint: 'Seleccionar módulo/lugar...',
+                            controller: lugarCtrl,
+                            readOnly: esSoloLectura,
+                            onTap: esSoloLectura ? () {} : () => _abrirBuscadorGenericoFormulario(dialogContext: dialogContext, titulo: 'Lugar Exacto', opciones: _listaAreasLogistica, controller: lugarCtrl, setModalState: setModalState)
                         ),
                         const SizedBox(height: 12),
                         _buildCampoFechaHora(fechaHoraSeleccionada),
                       ] else ...[
                         Row(
-                          children: [
-                            Expanded(child: _buildSelectorCampoModal(
-                              label: 'Lugar Exacto de Ocurrencia *',
-                              hint: 'Seleccionar módulo/lugar...',
-                              controller: lugarCtrl,
-                              readOnly: esSoloLectura,
-                              onTap: esSoloLectura ? () {} : () => _abrirBuscadorGenericoFormulario(dialogContext: dialogContext, titulo: 'Lugar Exacto', opciones: _listaAreasLogistica, controller: lugarCtrl, setModalState: setModalState),
-                            )),
-                            const SizedBox(width: 12),
-                            Expanded(child: _buildCampoFechaHora(fechaHoraSeleccionada)),
-                          ],
+                            children: [
+                              Expanded(
+                                  child: _buildSelectorCampoModal(
+                                      label: 'Lugar Exacto de Ocurrencia *',
+                                      hint: 'Seleccionar módulo/lugar...',
+                                      controller: lugarCtrl,
+                                      readOnly: esSoloLectura,
+                                      onTap: esSoloLectura ? () {} : () => _abrirBuscadorGenericoFormulario(dialogContext: dialogContext, titulo: 'Lugar Exacto', opciones: _listaAreasLogistica, controller: lugarCtrl, setModalState: setModalState)
+                                  )
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildCampoFechaHora(fechaHoraSeleccionada))
+                            ]
                         ),
                       ],
                       const SizedBox(height: 12),
@@ -849,38 +1126,35 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                         _buildCajaFirma(puntosFirma, tieneFirmaPrevia, row['firma_opm'], firmaKey, setModalState, esSoloLectura),
                       ] else ...[
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: _buildCajaFotoAbordaje(fotoEvidenciaFile, fotoEvidenciaNombre, row['foto_abordaje'], () => capturarFotoAbordaje(setModalState), setModalState, esSoloLectura, tieneFotoPrevia)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildCajaFirma(puntosFirma, tieneFirmaPrevia, row['firma_opm'], firmaKey, setModalState, esSoloLectura)),
-                          ],
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: _buildCajaFotoAbordaje(fotoEvidenciaFile, fotoEvidenciaNombre, row['foto_abordaje'], () => capturarFotoAbordaje(setModalState), setModalState, esSoloLectura, tieneFotoPrevia)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildCajaFirma(puntosFirma, tieneFirmaPrevia, row['firma_opm'], firmaKey, setModalState, esSoloLectura))
+                            ]
                         ),
                       ],
 
                       const SizedBox(height: 24),
-
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           if (esSoloLectura) ...[
                             ElevatedButton(
-                              onPressed: () => Navigator.of(ctx).pop(),
-                              style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade300, foregroundColor: Colors.black87, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                              child: const Text('Cerrar Ventana', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey.shade300, foregroundColor: Colors.black87, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                                child: const Text('Cerrar Ventana', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))
                             )
                           ] else ...[
                             TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(),
-                              child: const Text('Cancelar', style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                child: const Text('Cancelar', style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold))
                             ),
                             const SizedBox(width: 12),
                             ElevatedButton.icon(
-                              onPressed: guardandoModal
-                                  ? null
-                                  : () async {
+                              onPressed: guardandoModal ? null : () async {
                                 if (lugarCtrl.text.trim().isEmpty || descripcionCtrl.text.trim().isEmpty || accionPrevCtrl.text.trim().isEmpty || accionCorrCtrl.text.trim().isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Complete todos los campos de texto (*)'), backgroundColor: Colors.orange));
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Complete todos los campos (*)'), backgroundColor: Colors.orange));
                                   return;
                                 }
                                 if (!tieneFotoPrevia && fotoEvidenciaFile == null) {
@@ -901,9 +1175,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                                   if (fotoEvidenciaFile != null) {
                                     try {
                                       urlFotoAbordaje = await ApiService.subirFoto('foto_abordaje', fotoEvidenciaFile!);
-                                    } catch (e) {
-                                      debugPrint("Error foto: $e");
-                                    }
+                                    } catch (e) { debugPrint("Error foto: $e"); }
                                   }
 
                                   if (puntosFirma.isNotEmpty) {
@@ -915,6 +1187,10 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                                         Uint8List bytes = byteData.buffer.asUint8List();
                                         Uint8List compressed = await _comprimirBytesMax15KB(bytes, maxKB: 14, startWidth: 400);
 
+                                        // Guardar temporalmente en web y subir
+                                        // IMPORTANTE: el uso de File aquí requiere que tu ApiService
+                                        // esté configurado para manejar MultipartRequest desde bytes, pero
+                                        // dejamos el código intacto.
                                         final tempDir = Directory.systemTemp;
                                         final firmaFile = File('${tempDir.path}/firma_${DateTime.now().millisecondsSinceEpoch}.png');
                                         await firmaFile.writeAsBytes(compressed);
@@ -937,15 +1213,12 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
 
                                   if (urlFotoAbordaje != null) updateData['foto_abordaje'] = urlFotoAbordaje;
                                   if (urlFirma != null) updateData['firma_opm'] = urlFirma;
-
                                   updateData['id'] = idRegistro;
+
                                   final response = await http.post(
-                                    Uri.parse('https://plantatocancipa.site/api/v1/db_logistica/actualizar/fms/fms_reporte'),
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'x-api-key': 'PlantaLogistica2026*'
-                                    },
-                                    body: jsonEncode(updateData),
+                                      Uri.parse('https://plantatocancipa.site/api/v1/db_logistica/actualizar/fms/fms_reporte'),
+                                      headers: {'Content-Type': 'application/json', 'x-api-key': 'PlantaLogistica2026*'},
+                                      body: jsonEncode(updateData)
                                   );
 
                                   if (response.statusCode != 200 && response.statusCode != 201) {
@@ -980,256 +1253,773 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
     );
   }
 
+  // =========================================================================
+  // TABLA DE DETALLES (RENDER)
+  // =========================================================================
+  Widget _buildContenedorTabla(List<Map<String, dynamic>> paginaLista, int inicio, int fin, int totalPaginas) {
+    final Map<int, TableColumnWidth> colWidths = const {
+      0: FlexColumnWidth(1.2),
+      1: FlexColumnWidth(1.0),
+      2: FlexColumnWidth(1.5),
+      3: FlexColumnWidth(2.5),
+      4: FlexColumnWidth(2.0),
+      5: FlexColumnWidth(2.0),
+      6: FlexColumnWidth(1.2),
+      7: FixedColumnWidth(160),
+    };
+
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Text('Mostrar ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: _registrosPorPagina,
+                          isDense: true,
+                          style: const TextStyle(fontSize: 11, color: Colors.black87),
+                          items: [10, 25, 50, 100].map((e) => DropdownMenuItem(value: e, child: Text('$e'))).toList(),
+                          onChanged: (v) => setState(() { _registrosPorPagina = v!; _paginaActual = 1; }),
+                        ),
+                      ),
+                    ),
+                    const Text(' registros', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  onPressed: _descargarExcel,
+                  icon: const Icon(Icons.file_download, size: 16),
+                  label: const Text('Descargar Excel', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green.shade600,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Scrollbar(
+                  controller: _tablaScrollController,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _tablaScrollController,
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Container(
+                      width: max(constraints.maxWidth, 1100),
+                      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 12.0),
+                      child: Container(
+                        decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade200, width: 1)),
+                        child: Column(
+                          children: [
+                            // HEADER FIJO
+                            Table(
+                              columnWidths: colWidths,
+                              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                              children: [
+                                TableRow(
+                                    decoration: const BoxDecoration(color: Color(0xFFFAFAFA)),
+                                    children: [
+                                      _headerCell('Fecha Evento'),
+                                      _headerCell('Máquina'),
+                                      _headerCell('Área'),
+                                      _headerCell('Evento Reportado'),
+                                      _headerCell('Supervisor'),
+                                      _headerCell('Operador (OPM)'),
+                                      _headerCell('Estado', centrar: true),
+                                      _headerCell('Gestión', centrar: true)
+                                    ]
+                                )
+                              ],
+                            ),
+                            // BODY SCROLLABLE
+                            Container(
+                              height: 400,
+                              child: SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: Table(
+                                  columnWidths: colWidths,
+                                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                                  children: paginaLista.map((row) {
+                                    String fecha = _formatearFechaCorta(row['fecha']?.toString());
+                                    String maquina = row['maquina']?.toString() ?? '-';
+                                    String area = row['area']?.toString() ?? '-';
+                                    String evento = row['evento']?.toString() ?? '-';
+                                    String supervisor = row['supervisor']?.toString() ?? '-';
+                                    String opmNombre = row['nombre']?.toString() ?? row['operador']?.toString() ?? '-';
+                                    String estado = _determinarEstado(row);
+
+                                    return TableRow(
+                                      decoration: const BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE)))),
+                                      children: [
+                                        _dataCell(fecha),
+                                        _dataCell(maquina, isBold: true),
+                                        _dataCell(area),
+                                        _dataCell(evento),
+                                        _dataCell(supervisor),
+                                        _dataCell(opmNombre),
+                                        _dataCellEstado(estado),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              ElevatedButton.icon(
+                                                onPressed: () => _abrirModalGestionarAbordaje(row),
+                                                icon: Icon(estado == 'PENDIENTE' ? Icons.edit_document : Icons.remove_red_eye_rounded, size: 14),
+                                                label: Text(estado == 'PENDIENTE' ? 'Investigar' : 'Detalle', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                                style: ElevatedButton.styleFrom(
+                                                    backgroundColor: estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.green.shade50,
+                                                    foregroundColor: estado == 'PENDIENTE' ? Colors.black87 : Colors.green.shade800,
+                                                    elevation: 0,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                                                    minimumSize: const Size(0, 28)
+                                                ),
+                                              ),
+                                              if (estado == 'REALIZADO') ...[
+                                                const SizedBox(width: 6),
+                                                _idGenerandoPdf == row['id'].toString()
+                                                    ? const Padding(
+                                                    padding: EdgeInsets.symmetric(horizontal: 8),
+                                                    child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                                                )
+                                                    : IconButton(
+                                                    onPressed: () => _generarYDescargarPDF(row),
+                                                    icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent, size: 18),
+                                                    tooltip: 'Descargar PDF',
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints()
+                                                ),
+                                              ]
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Mostrando ${paginaLista.isEmpty ? 0 : inicio + 1} a $fin de ${_abordajesFiltrados.length} reportes', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Row(
+                  children: [
+                    InkWell(
+                        onTap: _paginaActual > 1 ? () => setState(() => _paginaActual--) : null,
+                        child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)),
+                            child: const Text('Anterior', style: TextStyle(fontSize: 11, color: Colors.blue))
+                        )
+                    ),
+                    const SizedBox(width: 4),
+                    ...List.generate(min(totalPaginas, 9), (index) {
+                      int pageNum = index + 1;
+                      bool esActiva = pageNum == _paginaActual;
+                      return InkWell(
+                          onTap: () => setState(() => _paginaActual = pageNum),
+                          child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                  color: esActiva ? const Color(0xFF1976D2) : Colors.white,
+                                  border: Border.all(color: esActiva ? const Color(0xFF1976D2) : Colors.grey.shade300),
+                                  borderRadius: BorderRadius.circular(4)
+                              ),
+                              child: Text('$pageNum', style: TextStyle(fontSize: 11, color: esActiva ? Colors.white : Colors.blue))
+                          )
+                      );
+                    }),
+                    const SizedBox(width: 4),
+                    InkWell(
+                        onTap: _paginaActual < totalPaginas ? () => setState(() => _paginaActual++) : null,
+                        child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)),
+                            child: const Text('Siguiente', style: TextStyle(fontSize: 11, color: Colors.blue))
+                        )
+                    ),
+                  ],
+                )
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // PEQUEÑOS WIDGETS AUXILIARES
+  // =========================================================================
   Widget _buildDatoEstatico(String titulo, String valor) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(titulo, style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 2),
-        Text(valor, style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-      ],
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(titulo, style: const TextStyle(fontSize: 10, color: Colors.blueGrey, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text(valor, style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)
+        ]
     );
   }
 
   Widget _buildCampoFechaHora(DateTime fechaHoraSeleccionada) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Fecha y Hora Abordaje (Automática)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.grey.shade100),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${fechaHoraSeleccionada.day.toString().padLeft(2,'0')}/${fechaHoraSeleccionada.month.toString().padLeft(2,'0')}/${fechaHoraSeleccionada.year} ${fechaHoraSeleccionada.hour.toString().padLeft(2,'0')}:${fechaHoraSeleccionada.minute.toString().padLeft(2,'0')}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
-              ),
-              const Icon(Icons.lock_clock, size: 16, color: Colors.grey),
-            ],
-          ),
-        ),
-      ],
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Fecha y Hora Abordaje (Automática)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 4),
+          Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.grey.shade100),
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('${fechaHoraSeleccionada.day.toString().padLeft(2,'0')}/${fechaHoraSeleccionada.month.toString().padLeft(2,'0')}/${fechaHoraSeleccionada.year} ${fechaHoraSeleccionada.hour.toString().padLeft(2,'0')}:${fechaHoraSeleccionada.minute.toString().padLeft(2,'0')}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54)),
+                    const Icon(Icons.lock_clock, size: 16, color: Colors.grey)
+                  ]
+              )
+          )
+        ]
     );
   }
 
   Widget _buildCajaFotoAbordaje(File? file, String? nombre, dynamic urlPrevia, VoidCallback capturarFoto, StateSetter setModalState, bool esSoloLectura, bool tienePrevia) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFFF8F9FA), border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(8)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(children: [Icon(Icons.add_a_photo_outlined, size: 16, color: Colors.black54), SizedBox(width: 6), Text('Evidencia (Solo Foto) *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))]),
-          const SizedBox(height: 10),
-          if (file != null) ...[
-            Stack(children: [ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(file, height: 120, width: double.infinity, fit: BoxFit.cover)), Positioned(top: -5, right: -5, child: IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => setModalState(() { file = null; nombre = null; })))])
-          ] else if (tienePrevia) ...[
-            Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 16), const SizedBox(width: 6), const Text('Evidencia cargada', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)), const Spacer(), TextButton(onPressed: () => _mostrarPreviewImagen(urlPrevia.toString(), 'Evidencia'), style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap), child: const Text('Ver', style: TextStyle(fontSize: 11, color: Color(0xFF0D47A1))))]),
-            if (!esSoloLectura) ...[
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: const Color(0xFFF8F9FA), border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(8)),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                  children: [
+                    Icon(Icons.add_a_photo_outlined, size: 16, color: Colors.black54),
+                    SizedBox(width: 6),
+                    Text('Evidencia (Solo Foto) *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))
+                  ]
+              ),
               const SizedBox(height: 10),
-              SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: capturarFoto, icon: const Icon(Icons.camera_alt, size: 16, color: Colors.black54), label: const Text('Tomar Nueva Foto', style: TextStyle(fontSize: 11, color: Colors.black87)))),
+              if (file != null) ...[
+                Stack(
+                    children: [
+                      ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(file, height: 120, width: double.infinity, fit: BoxFit.cover)),
+                      Positioned(top: -5, right: -5, child: IconButton(icon: const Icon(Icons.cancel, color: Colors.red), onPressed: () => setModalState(() { file = null; nombre = null; })))
+                    ]
+                )
+              ] else if (tienePrevia) ...[
+                Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      const SizedBox(width: 6),
+                      const Text('Evidencia cargada', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      TextButton(
+                          onPressed: () => _mostrarPreviewImagen(urlPrevia.toString(), 'Evidencia'),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          child: const Text('Ver', style: TextStyle(fontSize: 11, color: Color(0xFF0D47A1)))
+                      )
+                    ]
+                ),
+                if (!esSoloLectura) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                          onPressed: capturarFoto,
+                          icon: const Icon(Icons.camera_alt, size: 16, color: Colors.black54),
+                          label: const Text('Tomar Nueva Foto', style: TextStyle(fontSize: 11, color: Colors.black87))
+                      )
+                  )
+                ]
+              ] else ...[
+                if (esSoloLectura)
+                  const Text('Sin evidencia fotográfica', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic))
+                else
+                  SizedBox(
+                      width: double.infinity, height: 60,
+                      child: OutlinedButton.icon(
+                          onPressed: capturarFoto,
+                          icon: const Icon(Icons.camera_alt, size: 24, color: Colors.blueGrey),
+                          label: const Text('Tomar Foto de Evidencia', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                          style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.blueGrey.shade300, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), backgroundColor: Colors.white)
+                      )
+                  )
+              ]
             ]
-          ] else ...[
-            if (esSoloLectura)
-              const Text('Sin evidencia fotográfica', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic))
-            else
-              SizedBox(width: double.infinity, height: 60, child: OutlinedButton.icon(onPressed: capturarFoto, icon: const Icon(Icons.camera_alt, size: 24, color: Colors.blueGrey), label: const Text('Tomar Foto de Evidencia', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey)), style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.blueGrey.shade300, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), backgroundColor: Colors.white))),
-          ]
-        ],
-      ),
+        )
     );
   }
 
   Widget _buildCajaFirma(List<Offset?> puntosFirma, bool tieneFirmaPrevia, dynamic urlPrevia, GlobalKey firmaKey, StateSetter setModalState, bool esSoloLectura) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), border: Border.all(color: Colors.green.shade200), borderRadius: BorderRadius.circular(8)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: const Color(0xFFE8F5E9), border: Border.all(color: Colors.green.shade200), borderRadius: BorderRadius.circular(8)),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(children: [Icon(Icons.draw_rounded, size: 18, color: Colors.green), SizedBox(width: 6), Text('Firma Digital OPM *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))]),
-              if (!esSoloLectura && (!tieneFirmaPrevia || puntosFirma.isNotEmpty))
-                TextButton(onPressed: () => setModalState(() => puntosFirma.clear()), style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap), child: const Text('Limpiar', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold)))
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          if (tieneFirmaPrevia && puntosFirma.isEmpty) ...[
-            Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 16), const SizedBox(width: 6), const Text('Firma registrada', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)), const Spacer(), TextButton(onPressed: () => _mostrarPreviewImagen(urlPrevia.toString(), 'Firma OPM'), style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap), child: const Text('Ver', style: TextStyle(fontSize: 11, color: Color(0xFF0D47A1))))]),
-            if (!esSoloLectura) ...[
-              const SizedBox(height: 10),
-              SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: () => setModalState(() => tieneFirmaPrevia = false), icon: const Icon(Icons.draw, size: 16, color: Colors.black54), label: const Text('Rehacer Firma', style: TextStyle(fontSize: 11, color: Colors.black87)))),
-            ]
-          ] else ...[
-            if (esSoloLectura)
-              const Text('Sin firma registrada', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic))
-            else
-              Container(
-                height: 140,
-                width: double.infinity,
-                decoration: BoxDecoration(border: Border.all(color: Colors.green.shade400, style: BorderStyle.solid, width: 2), borderRadius: BorderRadius.circular(6), color: Colors.white),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: RepaintBoundary(
-                    key: firmaKey,
-                    child: Container(
-                      color: Colors.white,
-                      child: GestureDetector(
-                        onPanUpdate: (details) {
-                          RenderBox box = firmaKey.currentContext!.findRenderObject() as RenderBox;
-                          Offset localPos = box.globalToLocal(details.globalPosition);
-                          setModalState(() => puntosFirma.add(localPos));
-                        },
-                        onPanEnd: (details) => setModalState(() => puntosFirma.add(null)),
-                        child: CustomPaint(painter: _FirmaPainter(puntosFirma), size: Size.infinite),
-                      ),
+              Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                        children: [
+                          Icon(Icons.draw_rounded, size: 18, color: Colors.green),
+                          SizedBox(width: 6),
+                          Text('Firma Digital OPM *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))
+                        ]
                     ),
-                  ),
-                ),
+                    if (!esSoloLectura && (!tieneFirmaPrevia || puntosFirma.isNotEmpty))
+                      TextButton(
+                          onPressed: () => setModalState(() => puntosFirma.clear()),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          child: const Text('Limpiar', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold))
+                      )
+                  ]
               ),
-          ]
-        ],
-      ),
+              const SizedBox(height: 10),
+
+              if (tieneFirmaPrevia && puntosFirma.isEmpty) ...[
+                Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      const SizedBox(width: 6),
+                      const Text('Firma registrada', style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      TextButton(
+                          onPressed: () => _mostrarPreviewImagen(urlPrevia.toString(), 'Firma OPM'),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                          child: const Text('Ver', style: TextStyle(fontSize: 11, color: Color(0xFF0D47A1)))
+                      )
+                    ]
+                ),
+                if (!esSoloLectura) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                          onPressed: () => setModalState(() => tieneFirmaPrevia = false),
+                          icon: const Icon(Icons.draw, size: 16, color: Colors.black54),
+                          label: const Text('Rehacer Firma', style: TextStyle(fontSize: 11, color: Colors.black87))
+                      )
+                  )
+                ]
+              ] else ...[
+                if (esSoloLectura)
+                  const Text('Sin firma registrada', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic))
+                else
+                  Container(
+                      height: 140, width: double.infinity,
+                      decoration: BoxDecoration(border: Border.all(color: Colors.green.shade400, style: BorderStyle.solid, width: 2), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                      child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: RepaintBoundary(
+                              key: firmaKey,
+                              child: Container(
+                                  color: Colors.white,
+                                  child: GestureDetector(
+                                      onPanUpdate: (details) {
+                                        RenderBox box = firmaKey.currentContext!.findRenderObject() as RenderBox;
+                                        Offset localPos = box.globalToLocal(details.globalPosition);
+                                        setModalState(() => puntosFirma.add(localPos));
+                                      },
+                                      onPanEnd: (details) => setModalState(() => puntosFirma.add(null)),
+                                      child: CustomPaint(painter: _FirmaPainter(puntosFirma), size: Size.infinite)
+                                  )
+                              )
+                          )
+                      )
+                  )
+              ]
+            ]
+        )
     );
   }
 
-  void _abrirBuscadorGenericoFormulario({
-    required BuildContext dialogContext,
-    required String titulo,
-    required List<String> opciones,
-    required TextEditingController controller,
-    required StateSetter setModalState,
-  }) {
+  void _abrirBuscadorGenericoFormulario({required BuildContext dialogContext, required String titulo, required List<String> opciones, required TextEditingController controller, required StateSetter setModalState}) {
     showModalBottomSheet(
-      context: dialogContext,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) {
-        String filtro = "";
-        return StatefulBuilder(
-          builder: (context, setBuscadorState) {
-            final listaFiltrada = opciones.where((n) => n.toLowerCase().contains(filtro.toLowerCase())).toList();
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Seleccionar $titulo', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
-                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Escriba para buscar o agregar...',
-                        prefixIcon: const Icon(Icons.search, color: Color(0xFF0D47A1)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FA),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                      ),
-                      onChanged: (val) => setBuscadorState(() => filtro = val),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
-                      child: (listaFiltrada.isEmpty && filtro.trim().isEmpty)
-                          ? const Padding(padding: EdgeInsets.all(20.0), child: Text('Lista vacía.\nEscriba el lugar arriba para agregarlo manualmente.', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center))
-                          : ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: listaFiltrada.length + (filtro.trim().isNotEmpty ? 1 : 0),
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          if (filtro.trim().isNotEmpty && index == listaFiltrada.length) {
-                            return ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.add_circle_outline, color: Color(0xFF0D47A1), size: 18),
-                              title: Text('Usar "${filtro.trim().toUpperCase()}"', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
-                              onTap: () {
-                                setModalState(() => controller.text = filtro.trim().toUpperCase());
-                                Navigator.pop(ctx);
-                              },
-                            );
-                          }
-                          final opcion = listaFiltrada[index];
-                          return ListTile(dense: true, title: Text(opcion, style: const TextStyle(fontSize: 13)), onTap: () { setModalState(() => controller.text = opcion); Navigator.pop(ctx); });
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+        context: dialogContext,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) {
+          String filtro = "";
+          return StatefulBuilder(
+              builder: (context, setBuscadorState) {
+                final listaFiltrada = opciones.where((n) => n.toLowerCase().contains(filtro.toLowerCase())).toList();
+                return SafeArea(
+                    child: Padding(
+                        padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Seleccionar $titulo', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
+                                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                                  ]
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                  autofocus: true,
+                                  decoration: InputDecoration(
+                                      hintText: 'Escriba para buscar o agregar...',
+                                      prefixIcon: const Icon(Icons.search, color: Color(0xFF0D47A1)),
+                                      filled: true,
+                                      fillColor: const Color(0xFFF8F9FA),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300))
+                                  ),
+                                  onChanged: (val) => setBuscadorState(() => filtro = val)
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                                  child: (listaFiltrada.isEmpty && filtro.trim().isEmpty)
+                                      ? const Padding(padding: EdgeInsets.all(20.0), child: Text('Lista vacía.\nEscriba el lugar arriba para agregarlo manualmente.', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center))
+                                      : ListView.separated(
+                                      shrinkWrap: true,
+                                      itemCount: listaFiltrada.length + (filtro.trim().isNotEmpty ? 1 : 0),
+                                      separatorBuilder: (_, __) => const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        if (filtro.trim().isNotEmpty && index == listaFiltrada.length) {
+                                          return ListTile(
+                                              dense: true,
+                                              leading: const Icon(Icons.add_circle_outline, color: Color(0xFF0D47A1), size: 18),
+                                              title: Text('Usar "${filtro.trim().toUpperCase()}"', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
+                                              onTap: () {
+                                                setModalState(() => controller.text = filtro.trim().toUpperCase());
+                                                Navigator.pop(ctx);
+                                              }
+                                          );
+                                        }
+                                        final opcion = listaFiltrada[index];
+                                        return ListTile(
+                                            dense: true,
+                                            title: Text(opcion, style: const TextStyle(fontSize: 13)),
+                                            onTap: () {
+                                              setModalState(() => controller.text = opcion);
+                                              Navigator.pop(ctx);
+                                            }
+                                        );
+                                      }
+                                  )
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
     );
   }
 
   Widget _buildSelectorCampoModal({required String label, required String hint, required TextEditingController controller, required VoidCallback onTap, bool readOnly = false}) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 4),
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: readOnly ? Colors.grey.shade100 : Colors.white),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: Text(controller.text.isEmpty ? hint : controller.text, style: TextStyle(fontSize: 12, color: controller.text.isEmpty ? Colors.black38 : (readOnly ? Colors.black54 : Colors.black87), fontWeight: controller.text.isEmpty ? FontWeight.normal : FontWeight.w600), overflow: TextOverflow.ellipsis)),
-                if (!readOnly) const Icon(Icons.search_rounded, size: 16, color: Color(0xFF0D47A1)),
-              ],
-            ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 4),
+          InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: readOnly ? Colors.grey.shade100 : Colors.white),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                            child: Text(
+                                controller.text.isEmpty ? hint : controller.text,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: controller.text.isEmpty ? Colors.black38 : (readOnly ? Colors.black54 : Colors.black87),
+                                    fontWeight: controller.text.isEmpty ? FontWeight.normal : FontWeight.w600
+                                ),
+                                overflow: TextOverflow.ellipsis
+                            )
+                        ),
+                        if (!readOnly)
+                          const Icon(Icons.search_rounded, size: 16, color: Color(0xFF0D47A1))
+                      ]
+                  )
+              )
           ),
-        ),
-      ],
+        ]
     );
   }
 
   Widget _buildInputForm(String label, TextEditingController controller, {String? hint, int maxLines = 1, bool readOnly = false}) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 4),
-        TextField(
-          controller: controller,
-          maxLines: maxLines,
-          readOnly: readOnly,
-          style: TextStyle(fontSize: 13, color: readOnly ? Colors.black54 : Colors.black87),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: Colors.black38, fontSize: 12),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            filled: readOnly,
-            fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: readOnly ? Colors.grey.shade300 : const Color(0xFF0D47A1), width: 1.5)),
-          ),
-        ),
-      ],
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+          const SizedBox(height: 4),
+          TextField(
+              controller: controller,
+              maxLines: maxLines,
+              readOnly: readOnly,
+              style: TextStyle(fontSize: 13, color: readOnly ? Colors.black54 : Colors.black87),
+              decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle: const TextStyle(color: Colors.black38, fontSize: 12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  filled: readOnly,
+                  fillColor: readOnly ? Colors.grey.shade100 : Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: readOnly ? Colors.grey.shade300 : const Color(0xFF0D47A1), width: 1.5))
+              )
+          )
+        ]
+    );
+  }
+
+  void _abrirModalBuscadorFiltro(String titulo, List<String> opciones, String seleccionActual, Function(String) onSelect) {
+    showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) {
+          String filtro = "";
+          return StatefulBuilder(
+              builder: (context, setBuscadorState) {
+                final listaFiltrada = opciones.where((n) => n.toLowerCase().contains(filtro.toLowerCase())).toList();
+                return SafeArea(
+                    child: Padding(
+                        padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Filtrar por $titulo', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
+                                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                                  ]
+                              ),
+                              const SizedBox(height: 8),
+                              TextField(
+                                  autofocus: true,
+                                  decoration: InputDecoration(
+                                      hintText: 'Buscar $titulo...',
+                                      prefixIcon: const Icon(Icons.search, color: Color(0xFF0D47A1)),
+                                      filled: true,
+                                      fillColor: const Color(0xFFF8F9FA),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300))
+                                  ),
+                                  onChanged: (val) => setBuscadorState(() => filtro = val)
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                                  child: ListView.separated(
+                                      shrinkWrap: true,
+                                      itemCount: listaFiltrada.length,
+                                      separatorBuilder: (_, __) => const Divider(height: 1),
+                                      itemBuilder: (context, index) {
+                                        final opcion = listaFiltrada[index];
+                                        final bool esSeleccionado = opcion == seleccionActual;
+                                        return ListTile(
+                                            dense: true,
+                                            title: Text(
+                                                opcion,
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: esSeleccionado ? FontWeight.bold : FontWeight.normal,
+                                                    color: esSeleccionado ? const Color(0xFF0D47A1) : Colors.black87
+                                                )
+                                            ),
+                                            trailing: esSeleccionado ? const Icon(Icons.check_circle, color: Color(0xFF0D47A1), size: 18) : null,
+                                            onTap: () {
+                                              onSelect(opcion);
+                                              Navigator.pop(ctx);
+                                            }
+                                        );
+                                      }
+                                  )
+                              )
+                            ]
+                        )
+                    )
+                );
+              }
+          );
+        }
+    );
+  }
+
+  Widget _headerCell(String text, {bool centrar = false}) {
+    return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Text(text, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.black87), textAlign: centrar ? TextAlign.center : TextAlign.left)
+    );
+  }
+
+  Widget _dataCell(String text, {bool centrar = false, bool isBold = false}) {
+    return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Text(text, style: TextStyle(fontSize: 10.5, color: Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, height: 1.3), textAlign: centrar ? TextAlign.center : TextAlign.left)
+    );
+  }
+
+  Widget _dataCellEstado(String estado) {
+    bool esPendiente = estado == 'PENDIENTE';
+    return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+        child: Center(
+            child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                    color: esPendiente ? Colors.orange.shade100 : Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: esPendiente ? Colors.orange.shade300 : Colors.green.shade300)
+                ),
+                child: Text(
+                    estado,
+                    style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: esPendiente ? Colors.orange.shade900 : Colors.green.shade800
+                    )
+                )
+            )
+        )
+    );
+  }
+
+  String _formatearFechaCorta(String? fechaRaw) {
+    if (fechaRaw == null || fechaRaw.isEmpty || fechaRaw == '-') return '-';
+    try {
+      String soloFecha = fechaRaw.split('T')[0];
+      List<String> p = soloFecha.split('-');
+      if (p.length == 3) return '${p[2]}/${p[1]}/${p[0]}';
+    } catch (_) {}
+    return fechaRaw;
+  }
+
+  String _formatearFechaHora(String? fechaRaw) {
+    if (fechaRaw == null || fechaRaw.isEmpty || fechaRaw == 'null') return '-';
+    try {
+      DateTime dt = DateTime.parse(fechaRaw);
+      return '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}/${dt.year} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+    } catch (_) {
+      return fechaRaw;
+    }
+  }
+
+  void _mostrarPreviewImagen(String url, String titulo) {
+    showDialog(
+        context: context,
+        builder: (ctx) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Container(
+                constraints: const BoxConstraints(maxWidth: 550, maxHeight: 600),
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppBar(
+                          title: Text(titulo, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                          backgroundColor: const Color(0xFF0D47A1),
+                          foregroundColor: Colors.white,
+                          automaticallyImplyLeading: false,
+                          elevation: 0,
+                          actions: [
+                            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))
+                          ]
+                      ),
+                      Expanded(
+                          child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: _buildImagenContenido(url)
+                          )
+                      )
+                    ]
+                )
+            )
+        )
+    );
+  }
+
+  Widget _buildImagenContenido(String url) {
+    if (url.startsWith('data:image')) {
+      try {
+        return Image.memory(base64Decode(url.split(',').last), fit: BoxFit.contain);
+      } catch (e) {
+        return const Center(child: Text('❌ Error al decodificar imagen.'));
+      }
+    } else {
+      return Image.network(
+          url,
+          fit: BoxFit.contain,
+          loadingBuilder: (ctx, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator(color: Color(0xFF0D47A1))),
+          errorBuilder: (ctx, error, trace) => const Center(child: Text('❌ Error de carga.'))
+      );
+    }
+  }
+
+  Widget _buildBannerError() {
+    return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade700)),
+        child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_mensajeError!, style: TextStyle(color: Colors.amber.shade900, fontSize: 11, fontWeight: FontWeight.bold))),
+              InkWell(
+                  onTap: _cargarDatosBD,
+                  child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: Colors.amber.shade900, borderRadius: BorderRadius.circular(4)),
+                      child: const Text('REINTENTAR', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))
+                  )
+              )
+            ]
+        )
     );
   }
 
   // =========================================================================
-  // ORDEN DE LA PANTALLA
+  // BUILD PRINCIPAL
   // =========================================================================
   @override
   Widget build(BuildContext context) {
@@ -1248,24 +2038,21 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_mensajeError != null) _buildBannerError(),
-
-            // 1. Encabezado
             _buildEncabezado(),
             const SizedBox(height: 20),
 
-            // 2. Filtros
             _buildBarraFiltros(),
             const SizedBox(height: 20),
 
-            // 3. Tarjetas
             _buildTarjetasEstadisticas(),
             const SizedBox(height: 20),
 
-            // 4. Tablas (Operador / Supervisor)
             _buildTablasResumen(),
             const SizedBox(height: 20),
 
-            // 5. Tabla Detalles (Expansible 100%)
+            _buildSeccionGraficos(),
+            const SizedBox(height: 20),
+
             _buildContenedorTabla(paginaActualLista, inicio, fin, totalPaginas),
             const SizedBox(height: 30),
           ],
@@ -1280,7 +2067,8 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
       children: [
         Row(
           children: [
-            if (widget.onToggleSidebar != null) IconButton(icon: const Icon(Icons.menu, color: Color(0xFF0D47A1)), onPressed: widget.onToggleSidebar),
+            if (widget.onToggleSidebar != null)
+              IconButton(icon: const Icon(Icons.menu, color: Color(0xFF0D47A1)), onPressed: widget.onToggleSidebar),
             const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1294,14 +2082,20 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
           onPressed: _cargarDatosBD,
           icon: const Icon(Icons.refresh_rounded, size: 16),
           label: const Text('Actualizar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0D47A1), foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0D47A1),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+          ),
         ),
       ],
     );
   }
 
   Widget _buildBarraFiltros() {
-    bool hayFiltrosActivos = _supervisorSel != 'Todos' || _opmSel != 'Todos' || _estadoSel != 'Todos' || _busquedaTexto.isNotEmpty;
+    bool hayFiltrosActivos = _supervisorSel != 'Todos' || _opmSel != 'Todos' || _estadoSel != 'Todos' || _busquedaTexto.isNotEmpty || _mesSel != 'Todos' || _fechaDesde != null || _fechaHasta != null;
 
     return Container(
       width: double.infinity,
@@ -1336,6 +2130,84 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
             runSpacing: 12,
             crossAxisAlignment: WrapCrossAlignment.end,
             children: [
+              // Mes
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Mes Evento', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 120,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _listaMeses.contains(_mesSel) ? _mesSel : _listaMeses.first,
+                        isDense: true,
+                        isExpanded: true,
+                        style: const TextStyle(fontSize: 11, color: Colors.black87),
+                        items: _listaMeses.map((e) => DropdownMenuItem(value: e, child: Text(e, overflow: TextOverflow.ellipsis))).toList(),
+                        onChanged: (v) => setState(() { _mesSel = v!; _aplicarFiltros(); }),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Fecha Desde
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Fecha Desde', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () => _seleccionarFechaFiltro(context, true),
+                    child: Container(
+                      width: 120,
+                      height: 33,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                              _fechaDesde == null ? 'DD/MM/AAAA' : '${_fechaDesde!.day.toString().padLeft(2,'0')}/${_fechaDesde!.month.toString().padLeft(2,'0')}/${_fechaDesde!.year}',
+                              style: TextStyle(fontSize: 11, color: _fechaDesde == null ? Colors.grey : Colors.black87)
+                          ),
+                          const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Fecha Hasta
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Fecha Hasta', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  InkWell(
+                    onTap: () => _seleccionarFechaFiltro(context, false),
+                    child: Container(
+                      width: 120,
+                      height: 33,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                              _fechaHasta == null ? 'DD/MM/AAAA' : '${_fechaHasta!.day.toString().padLeft(2,'0')}/${_fechaHasta!.month.toString().padLeft(2,'0')}/${_fechaHasta!.year}',
+                              style: TextStyle(fontSize: 11, color: _fechaHasta == null ? Colors.grey : Colors.black87)
+                          ),
+                          const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              // Supervisor
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1344,8 +2216,9 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   InkWell(
                     onTap: () => _abrirModalBuscadorFiltro('Supervisor', _listaSupervisores, _supervisorSel, (val) => setState(() { _supervisorSel = val; _aplicarFiltros(); })),
                     child: Container(
-                      width: 180,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      width: 160,
+                      height: 33,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1358,7 +2231,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   ),
                 ],
               ),
-
+              // Operador
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1367,8 +2240,9 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   InkWell(
                     onTap: () => _abrirModalBuscadorFiltro('Operador', _listaOpms, _opmSel, (val) => setState(() { _opmSel = val; _aplicarFiltros(); })),
                     child: Container(
-                      width: 180,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      width: 160,
+                      height: 33,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1381,14 +2255,14 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   ),
                 ],
               ),
-
+              // Estado
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Estado', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 4),
                   Container(
-                    width: 130,
+                    width: 110,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
                     decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6)),
                     child: DropdownButtonHideUnderline(
@@ -1404,14 +2278,14 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   ),
                 ],
               ),
-
+              // Buscar
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Buscar (Máquina, Evento, OPM)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 4),
                   SizedBox(
-                    width: 200,
+                    width: 180,
                     height: 33,
                     child: TextField(
                       style: const TextStyle(fontSize: 11),
@@ -1428,7 +2302,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                   ),
                 ],
               ),
-
+              // Conteo
               Padding(
                 padding: const EdgeInsets.only(bottom: 2),
                 child: Container(
@@ -1439,7 +2313,7 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
                     children: [
                       Icon(Icons.assignment_late_rounded, size: 16, color: Colors.orange.shade800),
                       const SizedBox(width: 6),
-                      Text('Reportes Filtrados: ${_abordajesFiltrados.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+                      Text('Resultados: ${_abordajesFiltrados.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
                     ],
                   ),
                 ),
@@ -1449,315 +2323,6 @@ class _FmsAbordajesScreenState extends State<FmsAbordajesScreen> {
         ],
       ),
     );
-  }
-
-  Widget _buildContenedorTabla(List<Map<String, dynamic>> paginaLista, int inicio, int fin, int totalPaginas) {
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-            child: Row(
-              children: [
-                const Text('Mostrar ', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: _registrosPorPagina,
-                      isDense: true,
-                      style: const TextStyle(fontSize: 11, color: Colors.black87),
-                      items: [10, 25, 50, 100].map((e) => DropdownMenuItem(value: e, child: Text('$e'))).toList(),
-                      onChanged: (v) => setState(() { _registrosPorPagina = v!; _paginaActual = 1; }),
-                    ),
-                  ),
-                ),
-                const Text(' registros', style: TextStyle(fontSize: 11, color: Colors.grey)),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Scrollbar(
-                  controller: _tablaScrollController,
-                  thumbVisibility: true,
-                  trackVisibility: true,
-                  child: SingleChildScrollView(
-                    controller: _tablaScrollController,
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Container(
-                      width: max(constraints.maxWidth, 1100),
-                      padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 12.0),
-                      child: Table(
-                        border: TableBorder.all(color: Colors.grey.shade200, width: 1),
-                        columnWidths: const {
-                          0: FlexColumnWidth(1.2), // Fecha
-                          1: FlexColumnWidth(1.0), // Máquina
-                          2: FlexColumnWidth(1.5), // Área
-                          3: FlexColumnWidth(2.5), // Evento
-                          4: FlexColumnWidth(2.0), // Supervisor
-                          5: FlexColumnWidth(2.0), // OPM
-                          6: FlexColumnWidth(1.2), // Estado
-                          7: FixedColumnWidth(160), // Gestión (Fijo para botones)
-                        },
-                        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                        children: [
-                          TableRow(
-                            decoration: const BoxDecoration(color: Color(0xFFFAFAFA)),
-                            children: [
-                              _headerCell('Fecha Evento'),
-                              _headerCell('Máquina'),
-                              _headerCell('Área'),
-                              _headerCell('Evento Reportado'),
-                              _headerCell('Supervisor'),
-                              _headerCell('Operador (OPM)'),
-                              _headerCell('Estado', centrar: true),
-                              _headerCell('Gestión', centrar: true),
-                            ],
-                          ),
-                          ...paginaLista.map((row) {
-                            String fecha = _formatearFechaCorta(row['fecha']?.toString());
-                            String maquina = row['maquina']?.toString() ?? '-';
-                            String area = row['area']?.toString() ?? '-';
-                            String evento = row['evento']?.toString() ?? '-';
-                            String supervisor = row['supervisor']?.toString() ?? '-';
-                            String opmNombre = row['nombre']?.toString() ?? row['operador']?.toString() ?? '-';
-                            String estado = _determinarEstado(row);
-
-                            return TableRow(
-                              decoration: const BoxDecoration(color: Colors.white),
-                              children: [
-                                _dataCell(fecha),
-                                _dataCell(maquina, isBold: true),
-                                _dataCell(area),
-                                _dataCell(evento),
-                                _dataCell(supervisor),
-                                _dataCell(opmNombre),
-                                _dataCellEstado(estado),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ElevatedButton.icon(
-                                        onPressed: () => _abrirModalGestionarAbordaje(row),
-                                        icon: Icon(estado == 'PENDIENTE' ? Icons.edit_document : Icons.remove_red_eye_rounded, size: 14),
-                                        label: Text(estado == 'PENDIENTE' ? 'Investigar' : 'Detalle', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.green.shade50,
-                                          foregroundColor: estado == 'PENDIENTE' ? Colors.black87 : Colors.green.shade800,
-                                          elevation: 0,
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                                          minimumSize: const Size(0, 28),
-                                        ),
-                                      ),
-                                      if (estado == 'REALIZADO') ...[
-                                        const SizedBox(width: 6),
-                                        _idGenerandoPdf == row['id'].toString()
-                                            ? const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 8),
-                                          child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent)),
-                                        )
-                                            : IconButton(
-                                          onPressed: () => _generarYDescargarPDF(row),
-                                          icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent, size: 18),
-                                          tooltip: 'Descargar PDF',
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                        ),
-                                      ]
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Mostrando ${paginaLista.isEmpty ? 0 : inicio + 1} a $fin de ${_abordajesFiltrados.length} reportes', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                Row(
-                  children: [
-                    InkWell(onTap: _paginaActual > 1 ? () => setState(() => _paginaActual--) : null, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)), child: const Text('Anterior', style: TextStyle(fontSize: 11, color: Colors.blue)))),
-                    const SizedBox(width: 4),
-                    ...List.generate(min(totalPaginas, 9), (index) {
-                      int pageNum = index + 1;
-                      bool esActiva = pageNum == _paginaActual;
-                      return InkWell(onTap: () => setState(() => _paginaActual = pageNum), child: Container(margin: const EdgeInsets.symmetric(horizontal: 2), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: esActiva ? const Color(0xFF1976D2) : Colors.white, border: Border.all(color: esActiva ? const Color(0xFF1976D2) : Colors.grey.shade300), borderRadius: BorderRadius.circular(4)), child: Text('$pageNum', style: TextStyle(fontSize: 11, color: esActiva ? Colors.white : Colors.blue))));
-                    }),
-                    const SizedBox(width: 4),
-                    InkWell(onTap: _paginaActual < totalPaginas ? () => setState(() => _paginaActual++) : null, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4)), child: const Text('Siguiente', style: TextStyle(fontSize: 11, color: Colors.blue)))),
-                  ],
-                )
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  void _abrirModalBuscadorFiltro(String titulo, List<String> opciones, String seleccionActual, Function(String) onSelect) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (ctx) {
-        String filtro = "";
-        return StatefulBuilder(
-          builder: (context, setBuscadorState) {
-            final listaFiltrada = opciones.where((n) => n.toLowerCase().contains(filtro.toLowerCase())).toList();
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(top: 16, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Filtrar por $titulo', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
-                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      autofocus: true,
-                      decoration: InputDecoration(
-                        hintText: 'Buscar $titulo...',
-                        prefixIcon: const Icon(Icons.search, color: Color(0xFF0D47A1)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FA),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                      ),
-                      onChanged: (val) => setBuscadorState(() => filtro = val),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: listaFiltrada.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final opcion = listaFiltrada[index];
-                          final bool esSeleccionado = opcion == seleccionActual;
-                          return ListTile(
-                            dense: true,
-                            title: Text(opcion, style: TextStyle(fontSize: 12, fontWeight: esSeleccionado ? FontWeight.bold : FontWeight.normal, color: esSeleccionado ? const Color(0xFF0D47A1) : Colors.black87)),
-                            trailing: esSeleccionado ? const Icon(Icons.check_circle, color: Color(0xFF0D47A1), size: 18) : null,
-                            onTap: () { onSelect(opcion); Navigator.pop(ctx); },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _headerCell(String text, {bool centrar = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-      child: Text(text, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.black87), textAlign: centrar ? TextAlign.center : TextAlign.left),
-    );
-  }
-
-  Widget _dataCell(String text, {bool centrar = false, bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-      child: Text(text, style: TextStyle(fontSize: 10.5, color: Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, height: 1.3), textAlign: centrar ? TextAlign.center : TextAlign.left),
-    );
-  }
-
-  Widget _dataCellEstado(String estado) {
-    bool esPendiente = estado == 'PENDIENTE';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: esPendiente ? Colors.orange.shade100 : Colors.green.shade100, borderRadius: BorderRadius.circular(4), border: Border.all(color: esPendiente ? Colors.orange.shade300 : Colors.green.shade300)),
-          child: Text(estado, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: esPendiente ? Colors.orange.shade900 : Colors.green.shade800)),
-        ),
-      ),
-    );
-  }
-
-  String _formatearFechaCorta(String? fechaRaw) {
-    if (fechaRaw == null || fechaRaw.isEmpty || fechaRaw == '-') return '-';
-    try {
-      String soloFecha = fechaRaw.split('T')[0];
-      List<String> p = soloFecha.split('-');
-      if (p.length == 3) return '${p[2]}/${p[1]}/${p[0]}';
-    } catch (_) {}
-    return fechaRaw;
-  }
-
-  String _formatearFechaHora(String? fechaRaw) {
-    if (fechaRaw == null || fechaRaw.isEmpty || fechaRaw == 'null') return '-';
-    try {
-      DateTime dt = DateTime.parse(fechaRaw);
-      return '${dt.day.toString().padLeft(2,'0')}/${dt.month.toString().padLeft(2,'0')}/${dt.year} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
-    } catch (_) {
-      return fechaRaw;
-    }
-  }
-
-  void _mostrarPreviewImagen(String url, String titulo) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 550, maxHeight: 600),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppBar(title: Text(titulo, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)), backgroundColor: const Color(0xFF0D47A1), foregroundColor: Colors.white, automaticallyImplyLeading: false, elevation: 0, actions: [IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))]),
-              Expanded(child: Padding(padding: const EdgeInsets.all(16.0), child: _buildImagenContenido(url))),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImagenContenido(String url) {
-    if (url.startsWith('data:image')) {
-      try { return Image.memory(base64Decode(url.split(',').last), fit: BoxFit.contain); } catch (e) { return const Center(child: Text('❌ Error al decodificar imagen.')); }
-    } else {
-      return Image.network(url, fit: BoxFit.contain, loadingBuilder: (ctx, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator(color: Color(0xFF0D47A1))), errorBuilder: (ctx, error, trace) => const Center(child: Text('❌ Error de carga.')));
-    }
-  }
-
-  Widget _buildBannerError() {
-    return Container(width: double.infinity, margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.amber.shade700)), child: Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 18), const SizedBox(width: 8), Expanded(child: Text(_mensajeError!, style: TextStyle(color: Colors.amber.shade900, fontSize: 11, fontWeight: FontWeight.bold))), InkWell(onTap: _cargarDatosBD, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.amber.shade900, borderRadius: BorderRadius.circular(4)), child: const Text('REINTENTAR', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))))]));
   }
 }
 

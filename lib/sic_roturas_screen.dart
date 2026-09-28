@@ -368,7 +368,7 @@ class _SicRoturasScreenState extends State<SicRoturasScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Monitoreo SIC T1', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: -0.5)),
+                      const Text('Monitoreo SIC WQI', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), letterSpacing: -0.5)),
                       const SizedBox(height: 4),
                       Text('Control de Intervalo Corto (Meta actual: ${_metaPorHora.toInt()} und/hora)', style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
                     ],
