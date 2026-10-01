@@ -499,11 +499,9 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
     final String idRegistro = row['id']?.toString() ?? '';
     final String estado = _determinarEstado(row);
 
-    final bool isPC = (defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux);
-
-    final bool esSoloLectura = isPC;
+    // MODIFICACIÓN: Ya NO bloqueamos la edición en PC.
+    // Solo bloqueamos si el estado ya está "REALIZADO".
+    final bool esSoloLectura = (estado == 'REALIZADO');
 
     // Normalización: si en BD viene PENDIENTE, NO, null o cualquier otro valor, asigna 'Comportamiento'
     String atribuibleRaw = (row['atribuible_flota']?.toString() ?? '').trim().toUpperCase();
@@ -585,14 +583,14 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(color: const Color(0xFF0D47A1).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : (estado == 'REALIZADO' ? Icons.edit : Icons.manage_search_rounded), color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22),
+                                child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : Icons.edit_document, color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22),
                               ),
                               const SizedBox(width: 12),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text('Investigación y Abordaje', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                  Text(esSoloLectura ? 'Reporte (Modo Lectura PC)' : (estado == 'REALIZADO' ? 'Editando Reporte' : 'Complete los detalles del reporte'), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                  Text(esSoloLectura ? 'Modo Lectura (Abordaje Realizado)' : 'Complete los detalles del reporte', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                 ],
                               ),
                             ],
@@ -601,21 +599,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      if (isPC) ...[
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.orange.shade50, border: Border.all(color: Colors.orange.shade200), borderRadius: BorderRadius.circular(8)),
-                          child: Row(
-                            children: [
-                              Icon(Icons.desktop_windows_rounded, color: Colors.orange.shade800, size: 20),
-                              const SizedBox(width: 10),
-                              const Expanded(child: Text('Modo PC detectado. Solo visualización. La creación o edición de abordajes debe realizarse desde un dispositivo móvil (celular o tablet).', style: TextStyle(fontSize: 12, color: Colors.black87))),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
 
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -868,8 +851,8 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error actualizando datos: $e'), backgroundColor: Colors.red));
                                 }
                               },
-                              icon: guardandoModal ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(estado == 'REALIZADO' ? Icons.update : Icons.check_circle_outline, size: 16),
-                              label: Text(guardandoModal ? 'Guardando...' : (estado == 'REALIZADO' ? 'Actualizar Cambios' : 'Guardar Investigación'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              icon: guardandoModal ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_circle_outline, size: 16),
+                              label: Text(guardandoModal ? 'Guardando...' : 'Guardar Investigación', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5), foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                             ),
                           ]
@@ -959,7 +942,7 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: artisticAxisAlignment,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Row(children: [Icon(Icons.draw_rounded, size: 18, color: Colors.green), SizedBox(width: 6), Text('Firma Digital OPM *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))]),
               if (!esSoloLectura && (!tieneFirmaPrevia || puntosFirma.isNotEmpty))
@@ -1006,8 +989,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
       ),
     );
   }
-
-  MainAxisAlignment get artisticAxisAlignment => MainAxisAlignment.spaceBetween;
 
   void _abrirBuscadorGenericoFormulario({
     required BuildContext dialogContext,
@@ -1347,10 +1328,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
   }
 
   Widget _buildContenedorTabla(List<Map<String, dynamic>> paginaLista, int inicio, int fin, int totalPaginas) {
-    bool isPC = (defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux);
-
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
       child: Column(
@@ -1445,11 +1422,11 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                 children: [
                                   ElevatedButton.icon(
                                     onPressed: () => _abrirModalGestionarAbordaje(row),
-                                    icon: Icon(isPC ? Icons.remove_red_eye_rounded : (estado == 'PENDIENTE' ? Icons.edit_document : Icons.edit), size: 14),
-                                    label: Text(isPC ? 'Ver' : (estado == 'PENDIENTE' ? 'Investigar' : 'Editar'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                    icon: Icon(estado == 'PENDIENTE' ? Icons.edit_document : Icons.edit, size: 14),
+                                    label: Text(estado == 'PENDIENTE' ? 'Investigar' : 'Editar', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: isPC ? Colors.grey.shade200 : (estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.blue.shade50),
-                                      foregroundColor: isPC ? Colors.black87 : (estado == 'PENDIENTE' ? Colors.black87 : Colors.blue.shade800),
+                                      backgroundColor: estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.blue.shade50,
+                                      foregroundColor: estado == 'PENDIENTE' ? Colors.black87 : Colors.blue.shade800,
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                                       minimumSize: const Size(0, 28),
@@ -1510,7 +1487,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
     );
   }
 
-  // --- HELPERS TABLA ---
   void _abrirModalBuscadorFiltro(String titulo, List<String> opciones, String seleccionActual, Function(String) onSelect) {
     showModalBottomSheet(
       context: context,
@@ -1656,9 +1632,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
   }
 }
 
-// ==========================================
-// CLASE PARA EL LIENZO DE FIRMA (CANVAS)
-// ==========================================
 class _FirmaPainter extends CustomPainter {
   final List<Offset?> puntos;
   _FirmaPainter(this.puntos);
