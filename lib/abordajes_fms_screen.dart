@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -280,6 +281,15 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
       String opm = row['nombre']?.toString() ?? row['operador']?.toString() ?? '-';
       String origenOpm = row['origen_opm']?.toString() ?? '-';
 
+      // Homologación segura para Atribuible a Flota
+      String atribuibleRaw = (row['atribuible_flota']?.toString() ?? '').trim().toUpperCase();
+      String atribuibleFlota = (atribuibleRaw == 'MAQUINA' || atribuibleRaw == 'SI') ? 'Maquina' : 'Comportamiento';
+
+      String obsTaller = row['observacion_taller']?.toString() ?? 'No aplica';
+      if (obsTaller.toLowerCase() == 'null' || obsTaller.trim().isEmpty || atribuibleFlota == 'Comportamiento') {
+        obsTaller = 'No aplica';
+      }
+
       String accionPrev = row['accion_preventiva']?.toString() ?? '-';
       String descripcion = row['descripcion_evento']?.toString() ?? '-';
       String accionCorr = row['accion_correctiva']?.toString() ?? '-';
@@ -307,7 +317,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                   children: [
                     pw.TableRow(
                         children: [
-                          // CELDA DEL LOGO
                           pw.Container(
                             height: 60,
                             padding: const pw.EdgeInsets.all(5),
@@ -350,6 +359,21 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                   pw.TableRow(children: [celdaT('Supervisor:'), celdaV(supervisor), celdaT('Origen opm:'), celdaV(origenOpm)]),
                   pw.TableRow(children: [celdaT('Evento:'), celdaV(evento), celdaT('Máquina:'), celdaV(maquina)]),
                   pw.TableRow(children: [celdaT('Lugar:'), celdaV(lugar), celdaT('Area:'), celdaV(area)]),
+                ],
+              ),
+              pw.SizedBox(height: 20),
+
+              // 2.5 ATRIBUIBLE Y OBSERVACIÓN TALLER
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(1.3),
+                  1: const pw.FlexColumnWidth(2),
+                  2: const pw.FlexColumnWidth(1.3),
+                  3: const pw.FlexColumnWidth(2),
+                },
+                children: [
+                  pw.TableRow(children: [celdaT('Atribuible a:'), celdaV(atribuibleFlota), celdaT('Obs. Taller:'), celdaV(obsTaller)]),
                 ],
               ),
               pw.SizedBox(height: 20),
@@ -453,7 +477,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
 
       final bytesPdf = await doc.save();
 
-      // Formatear nombres para archivo
       String fechaFormateadaArchivo = fechaAbordaje.replaceAll(RegExp(r'[/: ]'), '_');
       String opmFormateadoArchivo = opm.replaceAll(' ', '_').replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
 
@@ -475,7 +498,27 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
   void _abrirModalGestionarAbordaje(Map<String, dynamic> row) {
     final String idRegistro = row['id']?.toString() ?? '';
     final String estado = _determinarEstado(row);
-    final bool esSoloLectura = estado == 'REALIZADO';
+
+    final bool isPC = (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux);
+
+    final bool esSoloLectura = isPC;
+
+    // Normalización: si en BD viene PENDIENTE, NO, null o cualquier otro valor, asigna 'Comportamiento'
+    String atribuibleRaw = (row['atribuible_flota']?.toString() ?? '').trim().toUpperCase();
+    String atribuibleFlotaSel = (atribuibleRaw == 'MAQUINA' || atribuibleRaw == 'SI') ? 'Maquina' : 'Comportamiento';
+
+    final TextEditingController obsTallerCtrl = TextEditingController(
+        text: (atribuibleFlotaSel == 'Comportamiento')
+            ? 'No aplica'
+            : ((row['observacion_taller'] == null ||
+            row['observacion_taller'].toString().trim().isEmpty ||
+            row['observacion_taller'].toString().toLowerCase() == 'null' ||
+            row['observacion_taller'].toString().toLowerCase() == 'no aplica')
+            ? ''
+            : row['observacion_taller'].toString())
+    );
 
     final TextEditingController descripcionCtrl = TextEditingController(text: row['descripcion_evento']?.toString() ?? '');
     final TextEditingController lugarCtrl = TextEditingController(text: row['lugar_ocurrencia']?.toString() ?? '');
@@ -542,14 +585,14 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(color: const Color(0xFF0D47A1).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : Icons.manage_search_rounded, color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22),
+                                child: Icon(esSoloLectura ? Icons.remove_red_eye_rounded : (estado == 'REALIZADO' ? Icons.edit : Icons.manage_search_rounded), color: const Color(0xFF0D47A1), size: isMobileModal ? 18 : 22),
                               ),
                               const SizedBox(width: 12),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text('Investigación y Abordaje', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                                  Text(esSoloLectura ? 'Reporte Gestionado (Solo Lectura)' : 'Complete los detalles del reporte', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                  Text(esSoloLectura ? 'Reporte (Modo Lectura PC)' : (estado == 'REALIZADO' ? 'Editando Reporte' : 'Complete los detalles del reporte'), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                                 ],
                               ),
                             ],
@@ -558,6 +601,21 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      if (isPC) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: Colors.orange.shade50, border: Border.all(color: Colors.orange.shade200), borderRadius: BorderRadius.circular(8)),
+                          child: Row(
+                            children: [
+                              Icon(Icons.desktop_windows_rounded, color: Colors.orange.shade800, size: 20),
+                              const SizedBox(width: 10),
+                              const Expanded(child: Text('Modo PC detectado. Solo visualización. La creación o edición de abordajes debe realizarse desde un dispositivo móvil (celular o tablet).', style: TextStyle(fontSize: 12, color: Colors.black87))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -627,6 +685,48 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                       ],
                       const SizedBox(height: 12),
 
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Atribuible a *', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: esSoloLectura ? Colors.grey.shade100 : Colors.white),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: (atribuibleFlotaSel == 'Maquina') ? 'Maquina' : 'Comportamiento',
+                                isDense: true,
+                                isExpanded: true,
+                                style: TextStyle(fontSize: 13, color: esSoloLectura ? Colors.black54 : Colors.black87),
+                                items: const [
+                                  DropdownMenuItem(value: 'Comportamiento', child: Text('Comportamiento')),
+                                  DropdownMenuItem(value: 'Maquina', child: Text('Maquina')),
+                                ],
+                                onChanged: esSoloLectura ? null : (v) {
+                                  if (v != null) {
+                                    setModalState(() {
+                                      atribuibleFlotaSel = v;
+                                      if (v == 'Comportamiento') {
+                                        obsTallerCtrl.text = 'No aplica';
+                                      } else {
+                                        if (obsTallerCtrl.text.trim().toLowerCase() == 'no aplica') {
+                                          obsTallerCtrl.text = '';
+                                        }
+                                      }
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      _buildInputForm('Observación Taller ${atribuibleFlotaSel == 'Maquina' ? '*' : ''}', obsTallerCtrl, hint: 'Escriba observaciones para taller...', maxLines: 2, readOnly: esSoloLectura || atribuibleFlotaSel == 'Comportamiento'),
+                      const SizedBox(height: 12),
+
                       _buildInputForm('Descripción detallada del Evento *', descripcionCtrl, hint: 'Describa cómo y por qué sucedió...', maxLines: 3, readOnly: esSoloLectura),
                       const SizedBox(height: 12),
                       _buildInputForm('Acción Preventiva Establecida *', accionPrevCtrl, hint: '¿Qué se hará para prevenir?', maxLines: 2, readOnly: esSoloLectura),
@@ -674,6 +774,10 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Complete todos los campos de texto (*)'), backgroundColor: Colors.orange));
                                   return;
                                 }
+                                if (atribuibleFlotaSel == 'Maquina' && obsTallerCtrl.text.trim().isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ La observación de taller es obligatoria si es atribuible a Máquina'), backgroundColor: Colors.orange));
+                                  return;
+                                }
                                 if (!tieneFotoPrevia && fotoEvidenciaBytes == null) {
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ La foto de evidencia es obligatoria (*)'), backgroundColor: Colors.orange));
                                   return;
@@ -715,6 +819,8 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                     'descripcion_evento': descripcionCtrl.text.trim(),
                                     'accion_preventiva': accionPrevCtrl.text.trim(),
                                     'accion_correctiva': accionCorrCtrl.text.trim(),
+                                    'atribuible_flota': atribuibleFlotaSel,
+                                    'observacion_taller': obsTallerCtrl.text.trim(),
                                   };
 
                                   if (urlFotoAbordaje != null) updateData['foto_abordaje'] = urlFotoAbordaje;
@@ -722,7 +828,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
 
                                   await ApiService.actualizar('fms', 'fms_reporte', 'id', idRegistro, updateData);
 
-                                  // 🚀 INICIO DE CÓDIGO NUEVO: DISPARAR EL BOT DE PDF A TRAVÉS DE NGINX
                                   try {
                                     final payloadBot = {
                                       "fecha": _formatearFechaCorta(row['fecha']?.toString()),
@@ -735,6 +840,8 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                       "maquina": row['maquina']?.toString() ?? '-',
                                       "lugar": lugarCtrl.text.trim(),
                                       "area": row['area']?.toString() ?? '-',
+                                      "atribuible_flota": atribuibleFlotaSel,
+                                      "observacion_taller": obsTallerCtrl.text.trim(),
                                       "accion_preventiva": accionPrevCtrl.text.trim(),
                                       "descripcion": descripcionCtrl.text.trim(),
                                       "accion_correctiva": accionCorrCtrl.text.trim(),
@@ -742,7 +849,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                       "firma_opm": urlFirma ?? row['firma_opm']?.toString()
                                     };
 
-                                    // URL segura apuntando a Nginx
                                     await http.post(
                                       Uri.parse('https://plantatocancipa.site/api/generar-abordaje'),
                                       headers: {'Content-Type': 'application/json'},
@@ -751,7 +857,6 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                   } catch (e) {
                                     debugPrint("Error notificando al bot de PDF: $e");
                                   }
-                                  // 🚀 FIN DE CÓDIGO NUEVO
 
                                   if (mounted) {
                                     Navigator.of(ctx).pop();
@@ -763,8 +868,8 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error actualizando datos: $e'), backgroundColor: Colors.red));
                                 }
                               },
-                              icon: guardandoModal ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_circle_outline, size: 16),
-                              label: Text(guardandoModal ? 'Guardando...' : 'Guardar Investigación', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              icon: guardandoModal ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(estado == 'REALIZADO' ? Icons.update : Icons.check_circle_outline, size: 16),
+                              label: Text(guardandoModal ? 'Guardando...' : (estado == 'REALIZADO' ? 'Actualizar Cambios' : 'Guardar Investigación'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5), foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                             ),
                           ]
@@ -854,7 +959,7 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: artisticAxisAlignment,
             children: [
               const Row(children: [Icon(Icons.draw_rounded, size: 18, color: Colors.green), SizedBox(width: 6), Text('Firma Digital OPM *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87))]),
               if (!esSoloLectura && (!tieneFirmaPrevia || puntosFirma.isNotEmpty))
@@ -901,6 +1006,8 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
       ),
     );
   }
+
+  MainAxisAlignment get artisticAxisAlignment => MainAxisAlignment.spaceBetween;
 
   void _abrirBuscadorGenericoFormulario({
     required BuildContext dialogContext,
@@ -1181,12 +1288,12 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                     decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6)),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
-                        value: _listaEstados.contains(_estadoSel) ? _estadoSel : _listaEstados.first,
+                        value: _listaEstados.contains(_estadoSel) ? _estadoSel : 'Todos',
                         isDense: true,
                         isExpanded: true,
                         style: const TextStyle(fontSize: 11, color: Colors.black87),
                         items: _listaEstados.map((e) => DropdownMenuItem(value: e, child: Text(e, overflow: TextOverflow.ellipsis))).toList(),
-                        onChanged: (v) => setState(() { _estadoSel = v!; _aplicarFiltros(); }),
+                        onChanged: (v) => setState(() { _estadoSel = v ?? 'Todos'; _aplicarFiltros(); }),
                       ),
                     ),
                   ),
@@ -1240,6 +1347,10 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
   }
 
   Widget _buildContenedorTabla(List<Map<String, dynamic>> paginaLista, int inicio, int fin, int totalPaginas) {
+    bool isPC = (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux);
+
     return Container(
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade300)),
       child: Column(
@@ -1283,14 +1394,14 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                   child: Table(
                     border: TableBorder.all(color: Colors.grey.shade200, width: 1),
                     columnWidths: const {
-                      0: FixedColumnWidth(90),  // Fecha
-                      1: FixedColumnWidth(110), // Máquina
-                      2: FixedColumnWidth(120), // Área
-                      3: FixedColumnWidth(180), // Evento
-                      4: FixedColumnWidth(150), // Supervisor
-                      5: FixedColumnWidth(150), // OPM
-                      6: FixedColumnWidth(110), // Estado
-                      7: FixedColumnWidth(160), // Acción (Botón)
+                      0: FixedColumnWidth(90),
+                      1: FixedColumnWidth(110),
+                      2: FixedColumnWidth(120),
+                      3: FixedColumnWidth(180),
+                      4: FixedColumnWidth(150),
+                      5: FixedColumnWidth(150),
+                      6: FixedColumnWidth(110),
+                      7: FixedColumnWidth(160),
                     },
                     defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                     children: [
@@ -1334,11 +1445,11 @@ class _AbordajesFmsScreenState extends State<AbordajesFmsScreen> {
                                 children: [
                                   ElevatedButton.icon(
                                     onPressed: () => _abrirModalGestionarAbordaje(row),
-                                    icon: Icon(estado == 'PENDIENTE' ? Icons.edit_document : Icons.remove_red_eye_rounded, size: 14),
-                                    label: Text(estado == 'PENDIENTE' ? 'Investigar' : 'Detalle', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                    icon: Icon(isPC ? Icons.remove_red_eye_rounded : (estado == 'PENDIENTE' ? Icons.edit_document : Icons.edit), size: 14),
+                                    label: Text(isPC ? 'Ver' : (estado == 'PENDIENTE' ? 'Investigar' : 'Editar'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.green.shade50,
-                                      foregroundColor: estado == 'PENDIENTE' ? Colors.black87 : Colors.green.shade800,
+                                      backgroundColor: isPC ? Colors.grey.shade200 : (estado == 'PENDIENTE' ? const Color(0xFFFFC107) : Colors.blue.shade50),
+                                      foregroundColor: isPC ? Colors.black87 : (estado == 'PENDIENTE' ? Colors.black87 : Colors.blue.shade800),
                                       elevation: 0,
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
                                       minimumSize: const Size(0, 28),

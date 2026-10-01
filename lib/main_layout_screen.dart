@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'dashboard_ol_screen.dart';
 import 'reportes_diarios_screen.dart';
 import 'acciones_ol_screen.dart';
-import 'abordajes_fms_screen.dart'; // <-- AQUÍ IMPORTAMOS LA NUEVA PANTALLA
+import 'abordajes_fms_screen.dart';
+import 'cinco_why_screen.dart';
+import 'historial_cinco_why_screen.dart';
+import 'revision_cinco_why_screen.dart'; // <-- Importamos la nueva pantalla
 
 class MainLayoutScreen extends StatefulWidget {
   final Map<String, dynamic> usuario;
@@ -45,25 +48,15 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
   Widget build(BuildContext context) {
     final bool isMobile = MediaQuery.of(context).size.width < 850;
 
-    // Vistas principales integradas (índices 0, 1, 2, 3)
+    // Vistas principales integradas (índices 0 al 6)
     final List<Widget> paginas = [
-      DashboardOlScreen(
-        usuario: widget.usuario,
-        onToggleSidebar: () => _toggleSidebar(isMobile),
-      ),
-      ReportesDiariosScreen(
-        usuario: widget.usuario,
-        onToggleSidebar: () => _toggleSidebar(isMobile),
-      ),
-      AccionesOlScreen(
-        usuario: widget.usuario,
-        onToggleSidebar: () => _toggleSidebar(isMobile),
-      ),
-      // <-- AQUÍ LLAMAMOS A LA PANTALLA REAL (ÍNDICE 3)
-      AbordajesFmsScreen(
-        usuario: widget.usuario,
-        onToggleSidebar: () => _toggleSidebar(isMobile),
-      ),
+      DashboardOlScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 0
+      ReportesDiariosScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 1
+      AccionesOlScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 2
+      AbordajesFmsScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 3
+      CincoWhyScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 4
+      HistorialCincoWhyScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 5
+      RevisionCincoWhyScreen(usuario: widget.usuario, onToggleSidebar: () => _toggleSidebar(isMobile)), // 6 <-- Nueva Pantalla
     ];
 
     return Scaffold(
@@ -90,7 +83,6 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
               width: 250,
               child: _buildSidebarContent(isMobile),
             ),
-
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,
@@ -191,8 +183,27 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
                       ),
                       childrenPadding: const EdgeInsets.only(left: 12, bottom: 8),
                       children: [
-                        // ESTE ÍNDICE 3 AHORA ABRIRÁ LA PANTALLA REAL
                         _buildSidebarItem(index: 3, icon: Icons.assignment_ind_rounded, label: 'Abordajes', isMobile: isMobile),
+                      ],
+                    ),
+                  ),
+
+                  Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: true,
+                      iconColor: Colors.white,
+                      collapsedIconColor: Colors.white60,
+                      leading: const Icon(Icons.psychology_alt_rounded, color: Colors.white, size: 20),
+                      title: const Text(
+                        '5 POR QUÉ',
+                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      ),
+                      childrenPadding: const EdgeInsets.only(left: 12, bottom: 8),
+                      children: [
+                        _buildSidebarItem(index: 4, icon: Icons.post_add_rounded, label: 'Formulario 5 Why', isMobile: isMobile),
+                        _buildSidebarItem(index: 5, icon: Icons.history_rounded, label: 'Historial 5 Why', isMobile: isMobile),
+                        _buildSidebarItem(index: 6, icon: Icons.fact_check_rounded, label: 'Revisión 5 Why', isMobile: isMobile), // <-- Nuevo Enlace
                       ],
                     ),
                   ),
