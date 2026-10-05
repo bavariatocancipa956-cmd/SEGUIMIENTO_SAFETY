@@ -221,26 +221,42 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
   InputDecoration _inputDecor(String hint) => InputDecoration(
     hintText: hint,
-    hintStyle: const TextStyle(fontSize: 13, color: Colors.black45),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF1976D2), width: 1.5)),
-    filled: true, fillColor: Colors.white, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    hintStyle: const TextStyle(fontSize: 12, color: Colors.black45),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: Colors.grey.shade300)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFF1976D2), width: 1.5)),
+    filled: true, fillColor: Colors.white, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
   );
 
   // ==========================================
   // MODAL DE EVALUACIÓN VISUAL Y CALIFICACIÓN
   // ==========================================
   void _abrirModalEvaluacion(Map<String, dynamic> row) {
-    String id = row['id'].toString();
+    dynamic id = row['id'];
+    String estadoActual = (row['estado']?.toString() ?? 'PENDIENTE').toUpperCase();
+    bool yaEvaluado = estadoActual != 'PENDIENTE';
+    bool esApto = estadoActual == 'APTO';
+
     String? q1 = row['cumple_flujo_resolucion']?.toString();
     String? q2 = row['resolucion_primera_linea']?.toString();
     String? q3 = row['secuencia_tiene_sentido']?.toString();
     String? q4 = row['porques_con_evidencia']?.toString();
     String? q5 = row['encontro_causa_raiz']?.toString();
     String? q6 = row['proponen_acciones_eliminacion']?.toString();
-
     TextEditingController obsCtrl = TextEditingController(text: row['observacion_evaluador']?.toString() ?? '');
+
+    String? res2Db = row['resultado_2']?.toString();
+    if (res2Db == 'NULL') res2Db = '';
+    TextEditingController res2Ctrl = TextEditingController(text: res2Db ?? '');
+
+    String? obs2Db = row['Observacion 2']?.toString() ?? row['observacion_2']?.toString();
+    if (obs2Db == 'NULL') obs2Db = '';
+    TextEditingController obs2Ctrl = TextEditingController(text: obs2Db ?? '');
+
+    String? ultApDb = row['ultima aprovacion']?.toString() ?? row['ultima_aprovacion']?.toString();
+    if (ultApDb == 'NULL' || ultApDb == null || ultApDb.trim().isEmpty) ultApDb = null;
+    String? ultimaAprobacion = ultApDb;
+
     bool guardando = false;
 
     showDialog(
@@ -267,6 +283,10 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                     estadoCalculado = 'NO APTO';
                     colorEstado = Colors.red;
                   }
+                }
+
+                if (yaEvaluado) {
+                  colorEstado = estadoActual == 'APTO' ? Colors.green : Colors.red;
                 }
 
                 bool isMobile = MediaQuery.of(ctx).size.width < 700;
@@ -297,197 +317,317 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
                         Expanded(
                           child: SingleChildScrollView(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('📄 DETALLES DEL REPORTE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF475569))),
-                                      const SizedBox(height: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text('📄 DETALLES DEL REPORTE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF475569))),
+                                        const SizedBox(height: 12),
 
-                                      _datoRow('Fecha Evento:', row['fecha']?.toString().split('T')[0] ?? '-'),
-                                      _datoRow('Área / Proceso:', row['area']?.toString() ?? '-'),
-                                      _datoRow('PI Afectado:', row['pi']?.toString() ?? '-'),
-                                      _datoRow('Participantes:', row['participantes']?.toString() ?? '-'),
-                                      _datoRow('Valor Disparador:', row['valor_disparador_alcanzado']?.toString() ?? '-'),
-                                      _datoRow('Contención Inmediata:', row['contencion_problema']?.toString() ?? '-'),
-                                      const Divider(),
+                                        _datoRow('Fecha Evento:', row['fecha']?.toString().split('T')[0] ?? '-'),
+                                        _datoRow('Área / Proceso:', row['area']?.toString() ?? '-'),
+                                        _datoRow('PI Afectado:', row['pi']?.toString() ?? '-'),
+                                        _datoRow('Participantes:', row['participantes']?.toString() ?? '-'),
+                                        _datoRow('Valor Disparador:', row['valor_disparador_alcanzado']?.toString() ?? '-'),
+                                        _datoRow('Contención Inmediata:', row['contencion_problema']?.toString() ?? '-'),
 
-                                      const Text('Desarrollo de los 5 Porqués:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
-                                      const SizedBox(height: 8),
-                                      ...List.generate(5, (index) {
-                                        String pq = row['porque_${index + 1}']?.toString() ?? '';
-                                        String ex = row['explique_porque_${index + 1}']?.toString() ?? '';
-                                        String ev = row['evidencia_porque_${index + 1}']?.toString() ?? '';
+                                        Builder(
+                                            builder: (context) {
+                                              String causaRaizDesc = row['causa_raiz']?.toString() ?? row['causa raiz']?.toString() ?? '';
+                                              if (causaRaizDesc.trim().isNotEmpty && causaRaizDesc != 'NULL') {
+                                                return _datoRow('Causa Raíz Descrita:', causaRaizDesc);
+                                              }
+                                              return const SizedBox();
+                                            }
+                                        ),
 
-                                        if (pq.isEmpty && ex.isEmpty) return const SizedBox();
+                                        const Divider(),
+                                        const Text('Desarrollo de los 5 Porqués:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                                        const SizedBox(height: 8),
+                                        ...List.generate(5, (index) {
+                                          String pq = row['porque_${index + 1}']?.toString() ?? '';
+                                          String ex = row['explique_porque_${index + 1}']?.toString() ?? '';
+                                          String ev = row['evidencia_porque_${index + 1}']?.toString() ?? '';
 
-                                        Widget evWidget = Text(ev.isEmpty ? 'Sin evidencia adjunta' : ev, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic));
-                                        if (ev.contains('IMAGEN_ADJUNTA:')) {
-                                          final parts = ev.split('IMAGEN_ADJUNTA:');
-                                          final textEv = parts[0].replaceAll('|', '').trim();
-                                          final b64 = parts[1].replaceAll('data:image/jpeg;base64,', '').replaceAll('data:image/png;base64,', '').trim();
+                                          if (pq.isEmpty && ex.isEmpty) return const SizedBox();
 
-                                          evWidget = Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              if (textEv.isNotEmpty) Text(textEv, style: const TextStyle(fontSize: 12)),
-                                              const SizedBox(height: 6),
-                                              InkWell(
-                                                onTap: () => _mostrarPreviewImagen(b64),
-                                                child: Container(
-                                                  height: 80, width: 120,
-                                                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
-                                                  child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (c,e,s) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)))),
-                                                ),
-                                              )
-                                            ],
+                                          Widget evWidget = Text(ev.isEmpty ? 'Sin evidencia adjunta' : ev, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic));
+
+                                          // MEJORA: SOPORTA IMÁGENES BASE64 INTEGRADAS
+                                          if (ev.contains('IMAGEN_ADJUNTA:')) {
+                                            final parts = ev.split('IMAGEN_ADJUNTA:');
+                                            final textEv = parts[0].replaceAll('|', '').trim();
+                                            final b64 = parts[1].replaceAll('data:image/jpeg;base64,', '').replaceAll('data:image/png;base64,', '').trim();
+
+                                            evWidget = Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (textEv.isNotEmpty) Text(textEv, style: const TextStyle(fontSize: 12)),
+                                                const SizedBox(height: 6),
+                                                InkWell(
+                                                  onTap: () => _mostrarPreviewImagen(b64, isBase64: true),
+                                                  child: Container(
+                                                    height: 80, width: 120,
+                                                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                                                    child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (c,e,s) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)))),
+                                                  ),
+                                                )
+                                              ],
+                                            );
+                                          } else if (ev.contains('http')) {
+                                            int httpIndex = ev.indexOf('http');
+                                            String url = ev.substring(httpIndex).trim();
+                                            String textEv = ev.substring(0, httpIndex).replaceAll('|', '').trim();
+
+                                            evWidget = Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (textEv.isNotEmpty) Text(textEv, style: const TextStyle(fontSize: 12)),
+                                                const SizedBox(height: 6),
+                                                InkWell(
+                                                  onTap: () => _mostrarPreviewImagen(url, isBase64: false),
+                                                  child: Container(
+                                                    height: 80, width: 120,
+                                                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                                                    child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.network(url, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)))),
+                                                  ),
+                                                )
+                                              ],
+                                            );
+                                          } else if (ev.contains('data:image')) {
+                                            int dataIndex = ev.indexOf('data:image');
+                                            String b64 = ev.substring(dataIndex).replaceAll('data:image/jpeg;base64,', '').replaceAll('data:image/png;base64,', '').trim();
+                                            String textEv = ev.substring(0, dataIndex).replaceAll('|', '').trim();
+
+                                            evWidget = Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (textEv.isNotEmpty) Text(textEv, style: const TextStyle(fontSize: 12)),
+                                                const SizedBox(height: 6),
+                                                InkWell(
+                                                  onTap: () => _mostrarPreviewImagen(b64, isBase64: true),
+                                                  child: Container(
+                                                    height: 80, width: 120,
+                                                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(6), color: Colors.white),
+                                                    child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.memory(base64Decode(b64), fit: BoxFit.cover, errorBuilder: (c,e,s) => const Center(child: Icon(Icons.broken_image, color: Colors.grey)))),
+                                                  ),
+                                                )
+                                              ],
+                                            );
+                                          }
+
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 8),
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('¿Por qué ${index + 1}?', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1976D2), fontSize: 13)),
+                                                const SizedBox(height: 4),
+                                                Text(pq, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                                                const Divider(),
+                                                const Text('Respuesta / Explicación:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
+                                                const SizedBox(height: 2),
+                                                Text(ex, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                                                const Divider(),
+                                                const Text('Evidencia:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
+                                                const SizedBox(height: 4),
+                                                evWidget,
+                                              ],
+                                            ),
                                           );
-                                        }
+                                        }),
 
-                                        return Container(
-                                          margin: const EdgeInsets.only(bottom: 8),
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text('¿Por qué ${index + 1}?', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1976D2), fontSize: 13)),
-                                              const SizedBox(height: 4),
-                                              Text(pq, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-                                              const Divider(),
-                                              const Text('Respuesta / Explicación:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
-                                              const SizedBox(height: 2),
-                                              Text(ex, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-                                              const Divider(),
-                                              const Text('Evidencia:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blueGrey)),
-                                              const SizedBox(height: 4),
-                                              evWidget,
-                                            ],
-                                          ),
-                                        );
-                                      }),
+                                        const SizedBox(height: 12),
+                                        const Text('Acciones Propuestas:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
+                                        const SizedBox(height: 8),
+                                        ...List.generate(4, (index) {
+                                          String tipo = row['accion_${index + 1}']?.toString() ?? '';
+                                          String act = row['actividad_${index + 1}']?.toString() ?? '';
+                                          String desc = row['descripcion_${index + 1}']?.toString() ?? '';
+                                          String resp = row['responsable_${index + 1}']?.toString() ?? '';
+                                          String fCie = row['fecha_cierre_${index + 1}']?.toString().split('T')[0] ?? '';
 
-                                      const SizedBox(height: 12),
-                                      const Text('Acciones Propuestas:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E293B))),
-                                      const SizedBox(height: 8),
-                                      ...List.generate(4, (index) {
-                                        String tipo = row['accion_${index + 1}']?.toString() ?? '';
-                                        String act = row['actividad_${index + 1}']?.toString() ?? '';
-                                        String desc = row['descripcion_${index + 1}']?.toString() ?? '';
-                                        String resp = row['responsable_${index + 1}']?.toString() ?? '';
-                                        String fCie = row['fecha_cierre_${index + 1}']?.toString().split('T')[0] ?? '';
+                                          if (tipo.isEmpty && desc.isEmpty) return const SizedBox();
 
-                                        if (tipo.isEmpty && desc.isEmpty) return const SizedBox();
-
-                                        return Container(
-                                          margin: const EdgeInsets.only(bottom: 8),
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.shade200)),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text('Acción #${index + 1} - ${tipo.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFEA580C), fontSize: 13)),
-                                              const SizedBox(height: 6),
-                                              _datoRow('Actividad:', act.isEmpty ? 'N/A' : act),
-                                              _datoRow('Descripción:', desc),
-                                              _datoRow('Responsable:', resp),
-                                              _datoRow('Fecha Cierre:', fCie),
-                                            ],
-                                          ),
-                                        );
-                                      }),
-                                    ],
+                                          return Container(
+                                            margin: const EdgeInsets.only(bottom: 8),
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.shade200)),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('Acción #${index + 1} - ${tipo.toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFEA580C), fontSize: 13)),
+                                                const SizedBox(height: 6),
+                                                _datoRow('Actividad:', act.isEmpty ? 'N/A' : act),
+                                                _datoRow('Descripción:', desc),
+                                                _datoRow('Responsable:', resp),
+                                                _datoRow('Fecha Cierre:', fCie),
+                                              ],
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                    ),
                                   ),
-                                ),
 
-                                const SizedBox(height: 24),
+                                  const SizedBox(height: 24),
 
-                                // BLOQUE 2: CALIFICACIÓN DEL REVISOR
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF1976D2), width: 1.5)),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('✅ EVALUACIÓN DE CALIDAD', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF1976D2))),
-                                      const SizedBox(height: 8),
-                                      const Text('Basado en la lectura del reporte superior, califique los siguientes criterios:', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                                      const SizedBox(height: 16),
-                                      _buildOpcionEvaluacion('1. ¿Se cumple con el flujo de resolución de problemas (participación adecuada)?', q1, (val) => setModalState(() => q1 = val)),
-                                      _buildOpcionEvaluacion('2. ¿La resolución se llevó a cabo con la primera línea (operadores y técnicos)?', q2, (val) => setModalState(() => q2 = val)),
-                                      _buildOpcionEvaluacion('3. ¿La secuencia de resolución tiene sentido lógico?', q3, (val) => setModalState(() => q3 = val)),
-                                      _buildOpcionEvaluacion('4. ¿Todos los porqués cuentan con evidencia?', q4, (val) => setModalState(() => q4 = val)),
-                                      _buildOpcionEvaluacion('5. ¿Se encontró la Causa Raíz real?', q5, (val) => setModalState(() => q5 = val)),
-                                      _buildOpcionEvaluacion('6. ¿Se proponen acciones efectivas para eliminar la causa?', q6, (val) => setModalState(() => q6 = val)),
-                                    ],
+                                  // BLOQUE 1: CALIFICACIÓN DEL REVISOR
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: yaEvaluado ? Colors.grey.shade400 : const Color(0xFF1976D2), width: 1.5)),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(yaEvaluado ? '🔒 EVALUACIÓN DE CALIDAD (Solo lectura)' : '✅ EVALUACIÓN DE CALIDAD', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: yaEvaluado ? Colors.grey.shade700 : const Color(0xFF1976D2))),
+                                        const SizedBox(height: 8),
+                                        const Text('Basado en la lectura del reporte superior, califique los siguientes criterios:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                        const SizedBox(height: 16),
+                                        _buildOpcionEvaluacion('1. ¿Se cumple con el flujo de resolución de problemas (participación adecuada)?', q1, (val) => setModalState(() => q1 = val), disabled: yaEvaluado),
+                                        _buildOpcionEvaluacion('2. ¿La resolución se llevó a cabo con la primera línea (operadores y técnicos)?', q2, (val) => setModalState(() => q2 = val), disabled: yaEvaluado),
+                                        _buildOpcionEvaluacion('3. ¿La secuencia de resolución tiene sentido lógico?', q3, (val) => setModalState(() => q3 = val), disabled: yaEvaluado),
+                                        _buildOpcionEvaluacion('4. ¿Todos los porqués cuentan con evidencia?', q4, (val) => setModalState(() => q4 = val), disabled: yaEvaluado),
+                                        _buildOpcionEvaluacion('5. ¿Se encontró la Causa Raíz real?', q5, (val) => setModalState(() => q5 = val), disabled: yaEvaluado),
+                                        _buildOpcionEvaluacion('6. ¿Se proponen acciones efectivas para eliminar la causa?', q6, (val) => setModalState(() => q6 = val), disabled: yaEvaluado),
+
+                                        const SizedBox(height: 16),
+                                        const Divider(),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text('Calificación: ${yaEvaluado ? row['resultado'] : porcentaje.toStringAsFixed(1)}%', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: colorEstado)),
+                                            Row(
+                                              children: [
+                                                const Text('Estado: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                  decoration: BoxDecoration(border: Border.all(color: colorEstado), borderRadius: BorderRadius.circular(6), color: colorEstado.withOpacity(0.1)),
+                                                  child: Text(yaEvaluado ? estadoActual : estadoCalculado, style: TextStyle(color: colorEstado, fontWeight: FontWeight.w900, fontSize: 14)),
+                                                )
+                                              ],
+                                            )
+                                          ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        TextFormField(
+                                          controller: obsCtrl,
+                                          maxLines: 2,
+                                          readOnly: yaEvaluado,
+                                          style: const TextStyle(fontSize: 12),
+                                          decoration: _inputDecor('Detalle por qué no es apto u otra observación...').copyWith(labelText: 'Observación del Evaluador', floatingLabelBehavior: FloatingLabelBehavior.always, fillColor: yaEvaluado ? Colors.grey.shade100 : Colors.white),
+                                        )
+                                      ],
+                                    ),
                                   ),
-                                )
-                              ],
-                            ),
+
+                                  // BLOQUE 2: SEGUNDA REVISIÓN Y APROBACIÓN FINAL (SÓLO SI ES NO APTO)
+                                  if (yaEvaluado && !esApto) ...[
+                                    const SizedBox(height: 24),
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                          color: Colors.blue.shade50,
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(color: Colors.blue.shade200, width: 1.5)
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('🔄 SEGUNDA REVISIÓN Y APROBACIÓN FINAL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF1976D2))),
+                                          const SizedBox(height: 16),
+
+                                          const Text('Última Aprobación:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                          const SizedBox(height: 4),
+                                          DropdownButtonFormField<String>(
+                                            value: ['APROBADO', 'NO APROBADO', 'VOLVER A REVISAR', 'No aplica'].contains(ultimaAprobacion) ? ultimaAprobacion : null,
+                                            decoration: _inputDecor('Seleccione el estado final...'),
+                                            items: ['APROBADO', 'NO APROBADO', 'VOLVER A REVISAR', 'No aplica'].map((e) {
+                                              Color colorOpcion = Colors.black87;
+                                              if (e == 'APROBADO') colorOpcion = Colors.green;
+                                              if (e == 'NO APROBADO') colorOpcion = Colors.red;
+                                              if (e == 'VOLVER A REVISAR') colorOpcion = Colors.orange.shade800;
+                                              return DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontWeight: FontWeight.bold, color: colorOpcion)));
+                                            }).toList(),
+                                            onChanged: (val) => setModalState(() => ultimaAprobacion = val),
+                                          ),
+                                          const SizedBox(height: 12),
+
+                                          const Text('Resultado 2 (Recalificación):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                          const SizedBox(height: 4),
+                                          TextFormField(
+                                            controller: res2Ctrl,
+                                            style: const TextStyle(fontSize: 12),
+                                            decoration: _inputDecor('Ej: 100%, 80%, No aplica...'),
+                                          ),
+                                          const SizedBox(height: 12),
+
+                                          const Text('Observación 2:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                          const SizedBox(height: 4),
+                                          TextFormField(
+                                            controller: obs2Ctrl,
+                                            maxLines: 2,
+                                            style: const TextStyle(fontSize: 12),
+                                            decoration: _inputDecor('Comentarios de la segunda revisión o conclusión final...'),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  ],
+
+                                ],
+                              )
                           ),
                         ),
 
                         const Divider(height: 30),
 
-                        Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text('Calificación: ${porcentaje.toStringAsFixed(1)}%', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: porcentaje == 100.0 ? Colors.green : Colors.orange)),
-                                    Row(
-                                      children: [
-                                        const Text('Estado Final Automático: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                          decoration: BoxDecoration(border: Border.all(color: colorEstado), borderRadius: BorderRadius.circular(6), color: colorEstado.withOpacity(0.1)),
-                                          child: Text(estadoCalculado, style: TextStyle(color: colorEstado, fontWeight: FontWeight.w900, fontSize: 14)),
-                                        )
-                                      ],
-                                    )
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                TextFormField(
-                                  controller: obsCtrl,
-                                  maxLines: 2,
-                                  decoration: _inputDecor('Detalle por qué no es apto u otra observación...').copyWith(labelText: 'Observación del Evaluador', floatingLabelBehavior: FloatingLabelBehavior.always),
-                                )
-                              ],
-                            )
-                        ),
-                        const SizedBox(height: 16),
+                        // BOTONES DEL MODAL ADAPTATIVOS
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
+                          children: (yaEvaluado && esApto)
+                          // Si ya fue APTO, solo mostramos el botón Cerrar
+                              ? [
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1976D2), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+                              child: const Text('Cerrar', style: TextStyle(fontWeight: FontWeight.bold)),
+                            )
+                          ]
+                          // Si está PENDIENTE o NO APTO, permitimos cancelar o guardar
+                              : [
                             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(fontWeight: FontWeight.bold))),
                             const SizedBox(width: 12),
                             ElevatedButton.icon(
                               onPressed: guardando ? null : () async {
-                                if (respondidas < 6) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe responder todas las preguntas (SÍ/NO) para confirmar.'), backgroundColor: Colors.orange));
-                                  return;
-                                }
 
-                                String observacionFinal = obsCtrl.text.trim();
-                                if (estadoCalculado == 'APTO' && observacionFinal.isEmpty) {
-                                  observacionFinal = 'Cumple al 100%';
-                                } else if (estadoCalculado == 'NO APTO' && observacionFinal.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Como el estado es NO APTO, debe colocar una observación.'), backgroundColor: Colors.red));
-                                  return;
+                                // Lógica de Validación
+                                if (!yaEvaluado) {
+                                  if (respondidas < 6) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe responder todas las preguntas (SÍ/NO) para confirmar la primera revisión.'), backgroundColor: Colors.orange));
+                                    return;
+                                  }
+                                  if (estadoCalculado == 'NO APTO' && obsCtrl.text.trim().isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ Como el estado es NO APTO, debe colocar una observación.'), backgroundColor: Colors.red));
+                                    return;
+                                  }
+                                } else {
+                                  if (ultimaAprobacion == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe seleccionar una opción en Última Aprobación.'), backgroundColor: Colors.orange));
+                                    return;
+                                  }
                                 }
 
                                 setModalState(() => guardando = true);
 
+                                // ARMAR PAYLOAD CON NOMBRES EXACTOS DB SIN DUPLICADOS
                                 final payload = {
                                   'cumple_flujo_resolucion': q1,
                                   'resolucion_primera_linea': q2,
@@ -495,16 +635,23 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                                   'porques_con_evidencia': q4,
                                   'encontro_causa_raiz': q5,
                                   'proponen_acciones_eliminacion': q6,
-                                  'resultado': '${porcentaje.toStringAsFixed(1)}%',
-                                  'estado': estadoCalculado,
-                                  'observacion_evaluador': observacionFinal
+                                  'resultado': yaEvaluado ? row['resultado'] : '${porcentaje.toStringAsFixed(1)}%',
+                                  'estado': yaEvaluado ? estadoActual : estadoCalculado,
+                                  'observacion_evaluador': yaEvaluado ? row['observacion_evaluador'] : (obsCtrl.text.trim().isEmpty && estadoCalculado == 'APTO' ? 'Cumple al 100%' : obsCtrl.text.trim()),
+
+                                  'resultado_2': yaEvaluado ? res2Ctrl.text.trim() : (estadoCalculado == 'APTO' ? 'No aplica' : 'Pendiente por revisión'),
+                                  'Observacion 2': yaEvaluado ? obs2Ctrl.text.trim() : '',
+                                  'ultima aprovacion': yaEvaluado ? ultimaAprobacion : (estadoCalculado == 'APTO' ? 'No aplica' : 'Pendiente por revisión'),
+
+                                  // Actualiza la revisión y quita la etiqueta de PENDIENTE REVISIÓN del creador
+                                  'estado_revicion': 'Revisado',
                                 };
 
                                 try {
                                   await ApiService.actualizar('gestion', '5why', 'id', id, payload);
                                   if (mounted) {
                                     Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Revisión confirmada correctamente'), backgroundColor: Colors.green));
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Revisión actualizada correctamente'), backgroundColor: Colors.green));
                                     _cargarDatos();
                                   }
                                 } catch (e) {
@@ -528,30 +675,31 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
     );
   }
 
-  Widget _buildOpcionEvaluacion(String pregunta, String? valorActual, Function(String) onSelect) {
+  Widget _buildOpcionEvaluacion(String pregunta, String? valorActual, Function(String) onSelect, {bool disabled = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(child: Text(pregunta, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)))),
-          const SizedBox(width: 12),
+          Expanded(child: Text(pregunta, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)))),
+          const SizedBox(width: 8),
           Row(
             children: ['SI', 'NO'].map((opcion) {
               bool isSelected = valorActual == opcion;
               Color activeColor = opcion == 'SI' ? Colors.green : Colors.redAccent;
+
               return GestureDetector(
-                onTap: () => onSelect(opcion),
+                onTap: disabled ? null : () => onSelect(opcion),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  margin: const EdgeInsets.only(left: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: isSelected ? activeColor : Colors.white,
+                    color: isSelected ? activeColor : (disabled ? Colors.grey.shade100 : Colors.white),
                     border: Border.all(color: isSelected ? activeColor : Colors.grey.shade300, width: isSelected ? 2 : 1),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(opcion, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.grey.shade700)),
+                  child: Text(opcion, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.grey.shade700)),
                 ),
               );
             }).toList(),
@@ -561,7 +709,7 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
     );
   }
 
-  void _mostrarPreviewImagen(String b64) {
+  void _mostrarPreviewImagen(String dato, {required bool isBase64}) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -576,7 +724,9 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Image.memory(base64Decode(b64), fit: BoxFit.contain, height: 400),
+              child: isBase64
+                  ? Image.memory(base64Decode(dato), fit: BoxFit.contain, height: 400)
+                  : Image.network(dato, fit: BoxFit.contain, height: 400),
             ),
           ],
         ),
@@ -586,15 +736,60 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
   Widget _datoRow(String etiqueta, String valor) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 130, child: Text(etiqueta, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black54))),
-          Expanded(child: Text(valor, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+          SizedBox(width: 130, child: Text(etiqueta, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black54))),
+          Expanded(child: Text(valor, style: const TextStyle(fontSize: 12, color: Colors.black87))),
         ],
       ),
     );
+  }
+
+  // ==========================================
+  // EXTRACCIÓN INTELIGENTE DE IMÁGENES PARA EL PDF
+  // ==========================================
+  Future<Map<int, pw.ImageProvider>> _preDecodificarImagenes(Map<String, dynamic> row) async {
+    Map<int, pw.ImageProvider> imagenesListas = {};
+
+    for (int i = 1; i <= 5; i++) {
+      String rawEvidencia = row['evidencia_porque_$i']?.toString() ?? '';
+      try {
+        if (rawEvidencia.contains('http://') || rawEvidencia.contains('https://')) {
+          int httpIndex = rawEvidencia.indexOf('http');
+          String imageUrl = rawEvidencia.substring(httpIndex).trim();
+          imagenesListas[i] = await networkImage(imageUrl);
+        } else if (rawEvidencia.contains('IMAGEN_ADJUNTA:')) {
+          final parts = rawEvidencia.split('IMAGEN_ADJUNTA:');
+          if (parts.length > 1) {
+            String base64String = parts[1];
+            int commaIndex = base64String.indexOf('base64,');
+            if (commaIndex != -1) {
+              base64String = base64String.substring(commaIndex + 7);
+            }
+            if (base64String.length > 1000000) continue;
+            base64String = base64String.replaceAll(RegExp(r'\s+'), '');
+            await Future.delayed(const Duration(milliseconds: 10));
+            final imgBytes = base64Decode(base64String);
+            imagenesListas[i] = pw.MemoryImage(imgBytes, dpi: 72);
+          }
+        } else if (rawEvidencia.contains('data:image')) {
+          int dataIndex = rawEvidencia.indexOf('data:image');
+          String base64String = rawEvidencia.substring(dataIndex);
+          int commaIndex = base64String.indexOf('base64,');
+          if (commaIndex != -1) base64String = base64String.substring(commaIndex + 7);
+          if (base64String.length > 1000000) continue;
+          base64String = base64String.replaceAll(RegExp(r'\s+'), '');
+          await Future.delayed(const Duration(milliseconds: 10));
+          final imgBytes = base64Decode(base64String);
+          imagenesListas[i] = pw.MemoryImage(imgBytes, dpi: 72);
+        }
+      } catch (e) {
+        debugPrint('Error procesando imagen $i: $e');
+      }
+    }
+    return imagenesListas;
   }
 
   // ==========================================
@@ -603,14 +798,17 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
   Future<void> _generarYDescargarPDF(Map<String, dynamic> row) async {
     final String idRegistro = row['id']?.toString() ?? '';
     setState(() { _idGenerandoPdf = idRegistro; });
+    await Future.delayed(const Duration(milliseconds: 100));
 
     try {
-      final doc = pw.Document(compress: true);
+      final doc = pw.Document(compress: false);
       pw.ImageProvider? imgLogo;
       try {
         final ByteData data = await rootBundle.load('assets/icono_ol.png');
         imgLogo = pw.MemoryImage(data.buffer.asUint8List());
       } catch (_) {}
+
+      Map<int, pw.ImageProvider> imagenesListas = await _preDecodificarImagenes(row);
 
       final boldStyle = pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9);
       const regularStyle = pw.TextStyle(fontSize: 9);
@@ -627,20 +825,32 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
       List<pw.Widget> evidenciasWidgets = [];
       for (int i = 1; i <= 5; i++) {
         String rawEvidencia = row['evidencia_porque_$i']?.toString() ?? '';
+        String textoEvidencia = rawEvidencia;
+
         if (rawEvidencia.contains('IMAGEN_ADJUNTA:')) {
-          final parts = rawEvidencia.split('IMAGEN_ADJUNTA:');
-          final textoEvidencia = parts[0].replaceAll('|', '').trim();
-          final base64String = parts[1].replaceAll('data:image/jpeg;base64,', '').replaceAll('data:image/png;base64,', '').trim();
-          try {
-            final img = pw.MemoryImage(base64Decode(base64String), dpi: 72);
+          textoEvidencia = rawEvidencia.split('IMAGEN_ADJUNTA:')[0].replaceAll('|', '').trim();
+        } else if (rawEvidencia.contains('http')) {
+          textoEvidencia = rawEvidencia.substring(0, rawEvidencia.indexOf('http')).replaceAll('|', '').trim();
+        } else if (rawEvidencia.contains('data:image')) {
+          textoEvidencia = rawEvidencia.substring(0, rawEvidencia.indexOf('data:image')).replaceAll('|', '').trim();
+        }
+
+        if (imagenesListas.containsKey(i)) {
+          evidenciasWidgets.add(pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            if (textoEvidencia.isNotEmpty) pw.Text(textoEvidencia, style: const pw.TextStyle(fontSize: 8)),
+            if (textoEvidencia.isNotEmpty) pw.SizedBox(height: 4),
+            pw.Center(child: pw.Image(imagenesListas[i]!, height: 60, fit: pw.BoxFit.contain)),
+          ]));
+        } else {
+          if (rawEvidencia.contains('IMAGEN_ADJUNTA:') || rawEvidencia.contains('http') || rawEvidencia.contains('data:image')) {
             evidenciasWidgets.add(pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
               if (textoEvidencia.isNotEmpty) pw.Text(textoEvidencia, style: const pw.TextStyle(fontSize: 8)),
-              if (textoEvidencia.isNotEmpty) pw.SizedBox(height: 4),
-              pw.Center(child: pw.Image(img, height: 60, fit: pw.BoxFit.contain)),
+              pw.SizedBox(height: 4),
+              pw.Text('[Imagen omitida o muy pesada]', style: const pw.TextStyle(fontSize: 8, color: PdfColors.red800)),
             ]));
-          } catch (e) { evidenciasWidgets.add(pw.Text(textoEvidencia, style: const pw.TextStyle(fontSize: 8))); }
-        } else {
-          evidenciasWidgets.add(pw.Text(rawEvidencia, style: const pw.TextStyle(fontSize: 8)));
+          } else {
+            evidenciasWidgets.add(pw.Text(textoEvidencia, style: const pw.TextStyle(fontSize: 8)));
+          }
         }
       }
 
@@ -653,18 +863,23 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
       String contencion = row['contencion_problema']?.toString() ?? '-';
       String necesitaInv = (row['requiere_investigacion_adicional']?.toString() ?? 'NO').toUpperCase();
       String causaRaizFormulario = (row['encontro_causa_raiz']?.toString() ?? 'NO').toUpperCase();
+      String descripcionCausaRaiz = row['causa_raiz']?.toString() ?? row['causa raiz']?.toString() ?? '-';
 
       // Variables de la Evaluación de Calidad
       String q1 = row['cumple_flujo_resolucion']?.toString() ?? 'PD';
       String q2 = row['resolucion_primera_linea']?.toString() ?? 'PD';
       String q3 = row['secuencia_tiene_sentido']?.toString() ?? 'PD';
       String q4 = row['porques_con_evidencia']?.toString() ?? 'PD';
-      String q5 = row['encontro_causa_raiz']?.toString() ?? 'PD';
+      String q5 = row['encontro_causa_raiz_eval']?.toString() ?? row['encontro_causa_raiz']?.toString() ?? 'PD';
       String q6 = row['proponen_acciones_eliminacion']?.toString() ?? 'PD';
 
       String estadoEval = row['estado']?.toString().toUpperCase() ?? 'PENDIENTE';
       String calificacion = estadoEval == 'PENDIENTE' ? '0.0%' : (row['resultado']?.toString() ?? '0.0%');
       String obsEval = estadoEval == 'PENDIENTE' ? 'Pendiente por revisión' : (row['observacion_evaluador']?.toString() ?? '-');
+
+      String resultado2 = row['resultado_2']?.toString() ?? (estadoEval == 'APTO' ? 'No aplica' : 'Pendiente por revisión');
+      String ultimaAprovacion = row['ultima aprovacion']?.toString() ?? row['ultima_aprovacion']?.toString() ?? (estadoEval == 'APTO' ? 'No aplica' : 'Pendiente por revisión');
+      String obs2 = row['Observacion 2']?.toString() ?? row['observacion_2']?.toString() ?? '-';
 
       doc.addPage(
         pw.MultiPage(
@@ -755,7 +970,15 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                     )
                   ]
               ),
+              pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                  columnWidths: { 0: const pw.FlexColumnWidth(1), 1: const pw.FlexColumnWidth(5) },
+                  children: [
+                    pw.TableRow(children: [ celdaLabel('Descripción Causa Raíz:'), celdaValor(descripcionCausaRaiz) ]),
+                  ]
+              ),
 
+              pw.SizedBox(height: 5),
               pw.Table(border: pw.TableBorder.all(color: PdfColors.black, width: 1), children: [
                 pw.TableRow(children: [ pw.Container(color: greyBg, padding: const pw.EdgeInsets.all(4), alignment: pw.Alignment.center, child: pw.Text('ACCIONES', style: boldStyle)) ]),
               ]),
@@ -793,9 +1016,6 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                   ]
               ),
 
-              // =====================================
-              // EVALUACIÓN DE CALIDAD
-              // =====================================
               if (estadoEval == 'APTO' || estadoEval == 'NO APTO' || estadoEval == 'PENDIENTE') ...[
                 pw.SizedBox(height: 15),
                 pw.Table(
@@ -830,9 +1050,28 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                 ),
                 pw.Table(
                     border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                    columnWidths: { 0: const pw.FlexColumnWidth(1), 1: const pw.FlexColumnWidth(1.5), 2: const pw.FlexColumnWidth(1), 3: const pw.FlexColumnWidth(1.5) },
                     children: [
-                      pw.TableRow(children: [ pw.Container(color: greyBg, padding: const pw.EdgeInsets.all(4), alignment: pw.Alignment.centerLeft, child: pw.Text('Observación del Evaluador:', style: boldStyle)) ]),
+                      pw.TableRow(children: [
+                        celdaLabel('Resultado 2:'),
+                        celdaLabel(resultado2, colorTexto: PdfColors.blue800),
+                        celdaLabel('Última Aprobación:'),
+                        celdaLabel(ultimaAprovacion, colorTexto: PdfColors.blue800),
+                      ])
+                    ]
+                ),
+                pw.Table(
+                    border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                    children: [
+                      pw.TableRow(children: [ pw.Container(color: greyBg, padding: const pw.EdgeInsets.all(4), alignment: pw.Alignment.centerLeft, child: pw.Text('Observación Evaluador (1ra Revisión):', style: boldStyle)) ]),
                       pw.TableRow(children: [ pw.Container(padding: const pw.EdgeInsets.all(8), child: pw.Text(obsEval, style: regularStyle)) ]),
+                    ]
+                ),
+                pw.Table(
+                    border: pw.TableBorder.all(color: PdfColors.black, width: 1),
+                    children: [
+                      pw.TableRow(children: [ pw.Container(color: greyBg, padding: const pw.EdgeInsets.all(4), alignment: pw.Alignment.centerLeft, child: pw.Text('Observación 2 (2da Revisión):', style: boldStyle)) ]),
+                      pw.TableRow(children: [ pw.Container(padding: const pw.EdgeInsets.all(8), child: pw.Text(obs2, style: regularStyle)) ]),
                     ]
                 ),
               ]
@@ -854,7 +1093,7 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
   Future<void> _descargarExcel() async {
     try {
-      String csv = "ID;Fecha;Area;PI Afectado;Participantes;Valor Disparador;Causa Raiz Encontrada;Req. Investigacion Adicional;Estado Evaluacion;Observacion Evaluador;Estado Acciones\n";
+      String csv = "ID;Fecha;Area;PI Afectado;Participantes;Valor Disparador;Causa Raiz Encontrada;Req. Investigacion Adicional;Estado Evaluacion;Observacion Evaluador;Estado Acciones;Resultado 2;Observacion 2;Ultima Aprobacion\n";
       String sanitize(String val) => val.replaceAll('\n', ' ').replaceAll('\r', '').replaceAll(';', ',');
 
       for (var r in _registrosFiltrados) {
@@ -869,6 +1108,10 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
         String estEval = sanitize(r['estado']?.toString() ?? 'PENDIENTE');
         String obsEval = sanitize(r['observacion_evaluador']?.toString() ?? '');
 
+        String res2 = sanitize(r['resultado_2']?.toString() ?? '');
+        String obs2 = sanitize(r['Observacion 2']?.toString() ?? r['observacion_2']?.toString() ?? '');
+        String ultAp = sanitize(r['ultima aprovacion']?.toString() ?? r['ultima_aprovacion']?.toString() ?? '');
+
         int accionesCerradas = 0; int totalAcciones = 0;
         for (int i = 1; i <= 4; i++) {
           if ((r['accion_$i']?.toString() ?? '').isNotEmpty) {
@@ -877,7 +1120,7 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
           }
         }
         String estadoAcc = "$accionesCerradas de $totalAcciones cerradas";
-        csv += "$id;$f;$a;$p;$part;$disp;$causa;$req;$estEval;$obsEval;$estadoAcc\n";
+        csv += "$id;$f;$a;$p;$part;$disp;$causa;$req;$estEval;$obsEval;$estadoAcc;$res2;$obs2;$ultAp\n";
       }
 
       List<int> bytes = [0xEF, 0xBB, 0xBF] + utf8.encode(csv);
@@ -962,7 +1205,7 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
               _buildFiltroFecha('Fecha Hasta', _fechaHasta, (fecha) => setState(() { _fechaHasta = fecha; _aplicarFiltros(); })),
               _buildFiltroDropdown('Área', _listaFiltroArea, _filtroArea, (val) => setState(() { _filtroArea = val!; _aplicarFiltros(); })),
               _buildFiltroDropdown('PI Afectado', _listaFiltroPI, _filtroPI, (val) => setState(() { _filtroPI = val!; _aplicarFiltros(); })),
-              _buildFiltroDropdown('Estado', ['TODOS', 'PENDIENTE', 'APTO', 'NO APTO'], _filtroEstado, (val) => setState(() { _filtroEstado = val!; _aplicarFiltros(); })),
+              _buildFiltroDropdown('Estado', ['TODOS', 'PENDIENTE', 'APTO', 'NO APTO', 'APROBADO', 'NO APROBADO', 'VOLVER A REVISAR'], _filtroEstado, (val) => setState(() { _filtroEstado = val!; _aplicarFiltros(); })),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1120,12 +1363,12 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
   Widget _buildTablaAdherencia() {
     Map<String, String> textosPreguntas = {
-      'cumple_flujo_resolucion': 'Se cumple con el flujo de resolución de problemas (participación de las personas adecuadas)',
-      'resolucion_primera_linea': 'La resolución del problema se llevó a cabo con la primera línea (operadores y técnicos)',
-      'secuencia_tiene_sentido': 'La secuencia de la resolución de problema tiene sentido',
+      'cumple_flujo_resolucion': 'Se cumple con el flujo de resolución de problemas',
+      'resolucion_primera_linea': 'La resolución se llevó a cabo con la primera línea',
+      'secuencia_tiene_sentido': 'La secuencia de la resolución tiene sentido',
       'porques_con_evidencia': 'Todos los porqués cuentan con evidencia',
       'encontro_causa_raiz': 'Se encontró causa raíz',
-      'proponen_acciones_eliminacion': 'Se proponen acciones de eliminación de la causa raíz',
+      'proponen_acciones_eliminacion': 'Se proponen acciones de eliminación',
     };
 
     return Container(
@@ -1145,9 +1388,9 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
               const TableRow(
                   decoration: BoxDecoration(color: Color(0xFF1E293B)),
                   children: [
-                    Padding(padding: EdgeInsets.all(12), child: Text('PREGUNTA / CRITERIO EVALUADO', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold))),
-                    Padding(padding: EdgeInsets.all(12), child: Text('% ADHERENCIA', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-                    Padding(padding: EdgeInsets.all(12), child: Text('BARRA', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                    Padding(padding: EdgeInsets.all(10), child: Text('PREGUNTA / CRITERIO EVALUADO', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold))),
+                    Padding(padding: EdgeInsets.all(10), child: Text('% ADHERENCIA', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                    Padding(padding: EdgeInsets.all(10), child: Text('BARRA', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
                   ]
               ),
               if (_adherenciaPreguntas.isEmpty || _totalRevisados == 0)
@@ -1163,10 +1406,10 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
 
                 return TableRow(
                     children: [
-                      Padding(padding: const EdgeInsets.all(12), child: Text(e.value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87))),
-                      Padding(padding: const EdgeInsets.all(12), child: Text('${pct.toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorBarra), textAlign: TextAlign.center)),
+                      Padding(padding: const EdgeInsets.all(10), child: Text(e.value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.all(10), child: Text('${pct.toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorBarra), textAlign: TextAlign.center)),
                       Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(10),
                           child: Stack(
                             alignment: Alignment.centerLeft,
                             children: [
@@ -1271,9 +1514,9 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
               TableRow(
                   decoration: const BoxDecoration(color: Color(0xFF1E293B)),
                   children: [
-                    Padding(padding: const EdgeInsets.all(12), child: Text(headerCol1, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold))),
-                    const Padding(padding: EdgeInsets.all(12), child: Text('PENDIENTES', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-                    const Padding(padding: EdgeInsets.all(12), child: Text('PESO %', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                    Padding(padding: const EdgeInsets.all(10), child: Text(headerCol1, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold))),
+                    const Padding(padding: EdgeInsets.all(10), child: Text('PENDIENTES', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                    const Padding(padding: EdgeInsets.all(10), child: Text('PESO %', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
                   ]
               ),
               if (top10.isEmpty)
@@ -1287,16 +1530,16 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                 double pct = _totalPendientes == 0 ? 0 : (e.value / _totalPendientes) * 100;
                 return TableRow(
                     children: [
-                      Padding(padding: const EdgeInsets.all(12), child: Text(e.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87))),
-                      Padding(padding: const EdgeInsets.all(12), child: Text('${e.value}', style: const TextStyle(fontSize: 12, color: Colors.black87), textAlign: TextAlign.center)),
+                      Padding(padding: const EdgeInsets.all(10), child: Text(e.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87))),
+                      Padding(padding: const EdgeInsets.all(10), child: Text('${e.value}', style: const TextStyle(fontSize: 11, color: Colors.black87), textAlign: TextAlign.center)),
                       Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(10),
                           child: Stack(
                             alignment: Alignment.centerLeft,
                             children: [
-                              Container(height: 14, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
-                              FractionallySizedBox(widthFactor: pct / 100, child: Container(height: 14, decoration: BoxDecoration(color: colorBarra.withOpacity(0.6), borderRadius: BorderRadius.circular(4)))),
-                              Center(child: Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black87))),
+                              Container(height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+                              FractionallySizedBox(widthFactor: pct / 100, child: Container(height: 12, decoration: BoxDecoration(color: colorBarra.withOpacity(0.6), borderRadius: BorderRadius.circular(4)))),
+                              Center(child: Text('${pct.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black87))),
                             ],
                           )
                       ),
@@ -1307,9 +1550,9 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                 TableRow(
                     decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
                     children: [
-                      const Padding(padding: EdgeInsets.all(12), child: Text('TOTALES MOSTRADOS', style: TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-                      Padding(padding: const EdgeInsets.all(12), child: Text('$totalTop', style: const TextStyle(fontSize: 12, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-                      Padding(padding: const EdgeInsets.all(12), child: Text(_totalPendientes == 0 ? '0%' : '${((totalTop / _totalPendientes) * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                      const Padding(padding: EdgeInsets.all(10), child: Text('TOTALES MOSTRADOS', style: TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                      Padding(padding: const EdgeInsets.all(10), child: Text('$totalTop', style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                      Padding(padding: const EdgeInsets.all(10), child: Text(_totalPendientes == 0 ? '0%' : '${((totalTop / _totalPendientes) * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
                     ]
                 )
             ],
@@ -1354,11 +1597,15 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                     const Text(' registros', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: _descargarExcel,
-                  icon: const Icon(Icons.download_rounded, size: 16),
-                  label: const Text('Descargar Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50), foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+                Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _descargarExcel,
+                        icon: const Icon(Icons.download_rounded, size: 16),
+                        label: const Text('Descargar Excel', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4CAF50), foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+                      )
+                    ]
                 )
               ],
             ),
@@ -1371,32 +1618,47 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
               controller: _tablaScrollController,
               scrollDirection: Axis.horizontal,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 1200),
+                constraints: const BoxConstraints(minWidth: 1600),
                 child: Table(
                   border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade100)),
                   columnWidths: const {
-                    0: FixedColumnWidth(100),
-                    1: FixedColumnWidth(120),
-                    2: FixedColumnWidth(150),
-                    3: FlexColumnWidth(2),
-                    4: FlexColumnWidth(1.5),
-                    5: FixedColumnWidth(100),
-                    6: FlexColumnWidth(2),
-                    7: FixedColumnWidth(160)
+                    0: FixedColumnWidth(85),  // Fecha
+                    1: FixedColumnWidth(110), // Area
+                    2: FixedColumnWidth(110), // PI
+                    3: FlexColumnWidth(2.5),  // Disparador
+                    4: FlexColumnWidth(1.5),  // Participantes
+                    5: FixedColumnWidth(100), // Estado
+                    6: FlexColumnWidth(2),    // Obs 1
+                    7: FlexColumnWidth(2),    // Obs 2
+                    8: FixedColumnWidth(110), // Resultado Final
+                    9: FixedColumnWidth(220)  // Gestión (AMPLIADA PARA EL BOTÓN IA)
                   },
                   defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                   children: [
                     TableRow(
                         decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
                         children: [
-                          _headerCell('Fecha Evento'), _headerCell('Área'), _headerCell('PI Afectado'), _headerCell('Disparador'), _headerCell('Participantes'), _headerCell('Estado'), _headerCell('Observación'), _headerCell('Gestión', centrar: true),
+                          _headerCell('Fecha Evento'), _headerCell('Área'), _headerCell('PI Afectado'), _headerCell('Disparador'), _headerCell('Participantes'), _headerCell('Estado', centrar: true), _headerCell('Observación 1'), _headerCell('Observación 2'), _headerCell('Res. Final', centrar: true), _headerCell('Gestión', centrar: true),
                         ]
                     ),
                     ...paginaLista.map((row) {
-                      String estado = (row['estado']?.toString() ?? 'PENDIENTE').toUpperCase();
-                      Color colorEst = estado == 'APTO' ? Colors.green : (estado == 'NO APTO' ? Colors.red : Colors.orange);
-                      String observacion = row['observacion_evaluador']?.toString() ?? '-';
-                      if (observacion.trim().isEmpty) observacion = '-';
+                      String idRow = row['id'].toString();
+                      String estadoOriginal = (row['estado']?.toString() ?? 'PENDIENTE').toUpperCase();
+                      Color colorEst = estadoOriginal == 'APTO' ? Colors.green : (estadoOriginal == 'NO APTO' ? Colors.red : Colors.orange);
+
+                      String obs1 = row['observacion_evaluador']?.toString() ?? '-';
+                      if (obs1.trim().isEmpty) obs1 = '-';
+
+                      String obs2 = row['Observacion 2']?.toString() ?? row['observacion_2']?.toString() ?? '-';
+                      if (obs2.trim().isEmpty || obs2 == 'NULL') obs2 = '-';
+
+                      String resFinal = row['ultima aprovacion']?.toString() ?? row['ultima_aprovacion']?.toString() ?? '-';
+                      if (resFinal.trim().isEmpty || resFinal == 'NULL') resFinal = '-';
+
+                      Color colorResFinal = Colors.black87;
+                      if (resFinal == 'APROBADO' || resFinal == 'APTO') colorResFinal = Colors.green;
+                      if (resFinal == 'NO APROBADO' || resFinal == 'NO APTO') colorResFinal = Colors.red;
+                      if (resFinal == 'VOLVER A REVISAR') colorResFinal = Colors.orange.shade800;
 
                       return TableRow(
                           children: [
@@ -1406,34 +1668,73 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
                             _dataCell(row['valor_disparador_alcanzado']?.toString() ?? '-'),
                             _dataCell(row['participantes']?.toString() ?? '-'),
                             Padding(
-                              padding: const EdgeInsets.all(8.0),
+                              padding: const EdgeInsets.all(6.0),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                                 decoration: BoxDecoration(color: colorEst.withOpacity(0.1), border: Border.all(color: colorEst), borderRadius: BorderRadius.circular(4)),
-                                child: Text(estado, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorEst)),
+                                child: Text(estadoOriginal, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorEst)),
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
-                              child: Text(observacion, style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                              child: Text(obs1, style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                              child: Text(obs2, style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.black54), maxLines: 2, overflow: TextOverflow.ellipsis),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(6.0),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                decoration: BoxDecoration(color: colorResFinal != Colors.black87 ? colorResFinal.withOpacity(0.1) : Colors.grey.shade100, border: Border.all(color: colorResFinal != Colors.black87 ? colorResFinal : Colors.grey), borderRadius: BorderRadius.circular(4)),
+                                child: Text(resFinal, textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: colorResFinal != Colors.black87 ? colorResFinal : Colors.black87)),
+                              ),
                             ),
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                              child: Wrap(
+                                alignment: WrapAlignment.center,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 4,
+                                runSpacing: 4,
                                 children: [
+                                  // --- NUEVO BOTÓN: AUDITOR IA ---
+                                  if (estadoOriginal == 'PENDIENTE')
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🤖 La IA está evaluando el reporte... espere unos segundos.'), duration: Duration(seconds: 4)));
+                                        try {
+                                          await ApiService.auditarConIA(idRow);
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Auditoría IA completada con éxito'), backgroundColor: Colors.green));
+                                            _cargarDatos();
+                                          }
+                                        } catch (e) {
+                                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error IA: $e'), backgroundColor: Colors.red));
+                                        }
+                                      },
+                                      icon: const Icon(Icons.smart_toy_rounded, size: 14),
+                                      label: const Text('Auditor IA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.indigoAccent, foregroundColor: Colors.white, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0), minimumSize: const Size(0, 30), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+                                    ),
+
+                                  // --- BOTÓN ORIGINAL: EVALUAR / MODIFICAR ---
                                   ElevatedButton.icon(
                                     onPressed: () => _abrirModalEvaluacion(row),
                                     icon: const Icon(Icons.edit_document, size: 14),
-                                    label: Text(estado == 'PENDIENTE' ? 'Evaluar' : 'Modificar', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB300), foregroundColor: Colors.black87, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0), minimumSize: const Size(0, 30), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
+                                    label: Text(estadoOriginal == 'PENDIENTE' ? 'Manual' : 'Modificar', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFB300), foregroundColor: Colors.black87, elevation: 0, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0), minimumSize: const Size(0, 30), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4))),
                                   ),
-                                  const SizedBox(width: 8),
-                                  _idGenerandoPdf == row['id'].toString()
+
+                                  // --- BOTÓN ORIGINAL: PDF ---
+                                  _idGenerandoPdf == idRow
                                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
                                       : IconButton(
                                     icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent, size: 20),
                                     tooltip: 'Descargar PDF',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
                                     onPressed: () => _generarYDescargarPDF(row),
                                   ),
                                 ],
@@ -1471,11 +1772,11 @@ class _RevisionCincoWhyScreenState extends State<RevisionCincoWhyScreen> {
   }
 
   Widget _headerCell(String text, {bool centrar = false}) {
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 14.0, horizontal: 12.0), child: Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)), textAlign: centrar ? TextAlign.center : TextAlign.left));
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 8.0), child: Text(text, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)), textAlign: centrar ? TextAlign.center : TextAlign.left));
   }
 
   Widget _dataCell(String text, {bool centrar = false, bool isBold = false}) {
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 12.0), child: Text(text, style: TextStyle(fontSize: 12, color: isBold ? const Color(0xFF1976D2) : Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal), textAlign: centrar ? TextAlign.center : TextAlign.left, maxLines: 2, overflow: TextOverflow.ellipsis));
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 8.0), child: Text(text, style: TextStyle(fontSize: 11, color: isBold ? const Color(0xFF1976D2) : Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal), textAlign: centrar ? TextAlign.center : TextAlign.left, maxLines: 2, overflow: TextOverflow.ellipsis));
   }
 }
 
@@ -1522,5 +1823,3 @@ class _PieChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
-
-// ACTUALIZACION DE HOY

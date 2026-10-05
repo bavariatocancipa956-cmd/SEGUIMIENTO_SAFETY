@@ -17,6 +17,7 @@ dependencies:
   pdf: ^3.13.0
   printing: ^5.15.0
   intl: ^0.19.0 # <--- 1. AQUÍ SE AGREGÓ EL PAQUETE FALTANTE
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:

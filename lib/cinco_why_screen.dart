@@ -1,8 +1,39 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart'; // <-- Para compute()
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img; // <-- LIBRERÍA DE COMPRESIÓN
 import 'api_service.dart';
+
+// ==========================================
+// MOTOR DE COMPRESIÓN INTELIGENTE (AISLADO)
+// ==========================================
+// Esta función corre en un hilo secundario (Isolate/Worker)
+// para no congelar la pantalla mientras comprime la foto.
+Uint8List comprimirImagenWorker(Uint8List bytes) {
+  img.Image? decodedImage = img.decodeImage(bytes);
+  if (decodedImage == null) return bytes;
+
+  // 1. Redimensionar si es muy grande (mantiene la proporción automáticamente)
+  img.Image resized = decodedImage;
+  if (decodedImage.width > 600) {
+    resized = img.copyResize(decodedImage, width: 600);
+  }
+
+  // 2. Bucle iterativo: Convertir a JPEG y bajar calidad hasta que pese < 50 KB
+  int quality = 85;
+  Uint8List result = img.encodeJpg(resized, quality: quality);
+
+  // 51200 bytes = 50 KB
+  while (result.length > 51200 && quality > 5) {
+    quality -= 15; // Reducimos la calidad agresivamente en cada intento
+    result = img.encodeJpg(resized, quality: quality);
+  }
+
+  return result;
+}
 
 // --- CLASE PARA MANEJAR LAS ACCIONES (MÁXIMO 4) ---
 class AccionItem {
@@ -12,7 +43,7 @@ class AccionItem {
   final TextEditingController descripcionCtrl = TextEditingController();
   final TextEditingController responsableCtrl = TextEditingController();
   DateTime? fechaCierre;
-  String estado = 'Pendiente'; // <-- NUEVO ESTADO POR DEFECTO
+  String estado = 'Pendiente';
 
   void dispose() {
     actividadCtrl.dispose();
@@ -62,17 +93,20 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
   final List<TextEditingController> _porQuesCtrl = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _expliqueCtrl = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _evidenciasCtrl = List.generate(5, (_) => TextEditingController());
-  final List<String?> _evidenciasImagenes = List.filled(5, null);
+
+  // Lista para almacenar los bytes limpios de las imágenes comprimidas
+  final List<Uint8List?> _evidenciasImagenes = List.filled(5, null);
   final ImagePicker _picker = ImagePicker();
 
   // Investigación adicional y Causa Raíz
   String? _necesitaInvestigacion;
   String? _causaRaizEncontrada;
+  final _causaRaizCtrl = TextEditingController(); // <-- NUEVO: CONTROLADOR PARA LA CAUSA RAÍZ
 
   // Tabla de Acciones (Mínimo 2, Máximo 4)
   final List<AccionItem> _acciones = [AccionItem(), AccionItem()];
 
-  // Validación de Calidad del Análisis (Oculto en UI pero necesario para BD)
+  // Validación de Calidad del Análisis
   String? _cumpleFlujo;
   String? _resolucionPrimeraLinea;
   String? _secuenciaSentido;
@@ -91,6 +125,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
     _participantesCtrl.dispose();
     _valorDisparadorCtrl.dispose();
     _accionContencionCtrl.dispose();
+    _causaRaizCtrl.dispose(); // <-- Limpiar memoria
     for (var c in _porQuesCtrl) { c.dispose(); }
     for (var c in _expliqueCtrl) { c.dispose(); }
     for (var c in _evidenciasCtrl) { c.dispose(); }
@@ -112,23 +147,56 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
     }
   }
 
+  // ==========================================
+  // SELECCIÓN Y COMPRESIÓN DE LA FOTO
+  // ==========================================
   Future<void> _seleccionarImagen(int index) async {
     try {
+      // Obtenemos la imagen de la galería sin restricciones agresivas
+      // para manejar la compresión manualmente de forma segura
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 50,
-        maxWidth: 800,
       );
 
       if (image != null) {
-        final bytes = await image.readAsBytes();
+        Uint8List bytes = await image.readAsBytes();
+
+        // Si la imagen pesa más de 50 KB, entramos al ciclo de compresión
+        if (bytes.length > 51200) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Optimizando foto para que pese menos de 50 KB...'),
+                  duration: Duration(seconds: 2),
+                )
+            );
+          }
+
+          // Ejecutamos la compresión en el hilo secundario
+          bytes = await compute(comprimirImagenWorker, bytes);
+        }
+
+        // Verificación estricta final por si la imagen era imposible de comprimir
+        if (bytes.length > 51200) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('La imagen es demasiado compleja. Intente con otra foto de menor tamaño.'),
+                    backgroundColor: Colors.red
+                )
+            );
+          }
+          return;
+        }
+
         setState(() {
-          _evidenciasImagenes[index] = base64Encode(bytes);
+          _evidenciasImagenes[index] = bytes; // Guardamos los bytes optimizados
         });
+
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Imagen adjuntada correctamente'), backgroundColor: Colors.green));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al seleccionar imagen: $e'), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al procesar la imagen: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -178,6 +246,12 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
       return;
     }
 
+    // <-- NUEVA VALIDACIÓN: Si encontró causa raíz, debe describirla
+    if (_causaRaizEncontrada == 'SI' && _causaRaizCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor describa la causa raíz encontrada en el recuadro'), backgroundColor: Colors.orange));
+      return;
+    }
+
     for (int i = 0; i < _acciones.length; i++) {
       if (_acciones[i].tipoAccion == null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Seleccione el tipo de acción para la Acción #${i + 1}'), backgroundColor: Colors.red));
@@ -195,11 +269,29 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
 
     setState(() => _isSubmitting = true);
 
+    // --- 1. SUBIR IMÁGENES AL SERVIDOR Y OBTENER URLs ---
+    List<String> urlsImagenes = ['', '', '', '', ''];
+    for (int i = 0; i < 5; i++) {
+      if (_evidenciasImagenes[i] != null) {
+        String? urlSubida = await ApiService.subirImagen(_evidenciasImagenes[i]!);
+        if (urlSubida != null) {
+          urlsImagenes[i] = urlSubida;
+        } else {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al subir la foto #${i + 1} al servidor'), backgroundColor: Colors.red));
+          setState(() => _isSubmitting = false);
+          return; // Detener el guardado si falla una imagen
+        }
+      }
+    }
+
+    // --- 2. PREPARAR EL TEXTO FINAL DE LA EVIDENCIA ---
     String getEvidenciaFinal(int index) {
       String texto = _evidenciasCtrl[index].text.trim();
-      String? imagenB64 = _evidenciasImagenes[index];
-      if (imagenB64 != null && texto.isNotEmpty) return '$texto | IMAGEN_ADJUNTA: data:image/jpeg;base64,$imagenB64';
-      if (imagenB64 != null) return 'data:image/jpeg;base64,$imagenB64';
+      String url = urlsImagenes[index];
+
+      // Concatena el texto escrito con la URL limpia
+      if (url.isNotEmpty && texto.isNotEmpty) return '$texto | $url';
+      if (url.isNotEmpty) return url;
       return texto;
     }
 
@@ -208,6 +300,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
       return '';
     }
 
+    // --- 3. ARMAR EL PAYLOAD ---
     final Map<String, dynamic> payload = {
       'fecha': DateFormat('yyyy-MM-dd').format(_fecha),
       'turno': _turno,
@@ -224,35 +317,36 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
       'porque_5': _porQuesCtrl[4].text.trim(), 'explique_porque_5': _expliqueCtrl[4].text.trim(), 'evidencia_porque_5': getEvidenciaFinal(4),
 
       'requiere_investigacion_adicional': _necesitaInvestigacion,
-      'encontro_causa_raiz': _causaRaizEncontrada, // <-- NUEVA VALIDACIÓN AÑADIDA A LA BD
+      'encontro_causa_raiz': _causaRaizEncontrada,
+      'causa_raiz': _causaRaizCtrl.text.trim(), // <-- AÑADIDO: TEXTO DE LA CAUSA RAÍZ
 
       'accion_1': _acciones.isNotEmpty ? _acciones[0].tipoAccion : '',
       'actividad_1': _acciones.isNotEmpty ? _getValorActividad(_acciones[0]) : '',
       'descripcion_1': _acciones.isNotEmpty ? _acciones[0].descripcionCtrl.text : '',
       'responsable_1': _acciones.isNotEmpty ? _acciones[0].responsableCtrl.text : '',
       'fecha_cierre_1': (_acciones.isNotEmpty && _acciones[0].fechaCierre != null) ? DateFormat('yyyy-MM-dd').format(_acciones[0].fechaCierre!) : null,
-      'estado_accion1': _acciones.isNotEmpty ? _acciones[0].estado : '', // <-- ESTADO ACCIÓN 1
+      'estado_accion1': _acciones.isNotEmpty ? _acciones[0].estado : '',
 
       'accion_2': _acciones.length > 1 ? _acciones[1].tipoAccion : '',
       'actividad_2': _acciones.length > 1 ? _getValorActividad(_acciones[1]) : '',
       'descripcion_2': _acciones.length > 1 ? _acciones[1].descripcionCtrl.text : '',
       'responsable_2': _acciones.length > 1 ? _acciones[1].responsableCtrl.text : '',
       'fecha_cierre_2': (_acciones.length > 1 && _acciones[1].fechaCierre != null) ? DateFormat('yyyy-MM-dd').format(_acciones[1].fechaCierre!) : null,
-      'estado_accion2': _acciones.length > 1 ? _acciones[1].estado : '', // <-- ESTADO ACCIÓN 2
+      'estado_accion2': _acciones.length > 1 ? _acciones[1].estado : '',
 
       'accion_3': _acciones.length > 2 ? _acciones[2].tipoAccion : '',
       'actividad_3': _acciones.length > 2 ? _getValorActividad(_acciones[2]) : '',
       'descripcion_3': _acciones.length > 2 ? _acciones[2].descripcionCtrl.text : '',
       'responsable_3': _acciones.length > 2 ? _acciones[2].responsableCtrl.text : '',
       'fecha_cierre_3': (_acciones.length > 2 && _acciones[2].fechaCierre != null) ? DateFormat('yyyy-MM-dd').format(_acciones[2].fechaCierre!) : null,
-      'estado_accion3': _acciones.length > 2 ? _acciones[2].estado : '', // <-- ESTADO ACCIÓN 3
+      'estado_accion3': _acciones.length > 2 ? _acciones[2].estado : '',
 
       'accion_4': _acciones.length > 3 ? _acciones[3].tipoAccion : '',
       'actividad_4': _acciones.length > 3 ? _getValorActividad(_acciones[3]) : '',
       'descripcion_4': _acciones.length > 3 ? _acciones[3].descripcionCtrl.text : '',
       'responsable_4': _acciones.length > 3 ? _acciones[3].responsableCtrl.text : '',
       'fecha_cierre_4': (_acciones.length > 3 && _acciones[3].fechaCierre != null) ? DateFormat('yyyy-MM-dd').format(_acciones[3].fechaCierre!) : null,
-      'estado_accion4': _acciones.length > 3 ? _acciones[3].estado : '', // <-- ESTADO ACCIÓN 4
+      'estado_accion4': _acciones.length > 3 ? _acciones[3].estado : '',
 
       'cumple_flujo_resolucion': _cumpleFlujo,
       'resolucion_primera_linea': _resolucionPrimeraLinea,
@@ -273,6 +367,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
         setState(() {
           _necesitaInvestigacion = null;
           _causaRaizEncontrada = null;
+          _causaRaizCtrl.clear(); // <-- LIMPIAR CAMPO CAUSA RAÍZ
           _piSeleccionado = null;
           _cumpleFlujo = _resolucionPrimeraLinea = _secuenciaSentido = null;
           _porquesEvidencia = _accionesEliminacion = null;
@@ -626,13 +721,23 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
                       ['SI', 'NO'],
                           (val) => setState(() => _necesitaInvestigacion = val)
                   ),
-                  // <-- AÑADIDO: CAUSA RAÍZ ENCONTRADA
                   _opcionesReticula(
                       'Causa raíz encontrada ¿son necesarias más acciones?',
                       _causaRaizEncontrada,
                       ['SI', 'NO'],
                           (val) => setState(() => _causaRaizEncontrada = val)
                   ),
+                  // <-- NUEVO CAMPO: DESCRIPCIÓN DE LA CAUSA RAÍZ
+                  if (_causaRaizEncontrada == 'SI') ...[
+                    const SizedBox(height: 16),
+                    const Text('Descripción de la Causa Raíz', style: TextStyle(fontSize: 12, color: Color(0xFF334155), fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _causaRaizCtrl,
+                      maxLines: 3,
+                      decoration: _inputDecor('Detalle la causa raíz del problema encontrado...'),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -644,7 +749,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
 
   Widget _buildSeccionAccionesResposiva() {
     double screenWidth = MediaQuery.of(context).size.width;
-    bool isMobile = screenWidth < 800; // Ajustado breakpoint para la nueva columna
+    bool isMobile = screenWidth < 800;
 
     return Card(
       elevation: 2, shadowColor: Colors.black12,
@@ -683,7 +788,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 1000), // Aumentado ancho por nueva columna
+        constraints: const BoxConstraints(minWidth: 1000),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Table(
@@ -697,7 +802,7 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
               2: FlexColumnWidth(2),
               3: FixedColumnWidth(140),
               4: FixedColumnWidth(120),
-              5: FixedColumnWidth(120), // <-- COLUMNA ESTADO
+              5: FixedColumnWidth(120),
               6: FixedColumnWidth(45)
             },
             children: [
@@ -769,7 +874,6 @@ class _CincoWhyScreenState extends State<CincoWhyScreen> {
                         ),
                       ),
                     ),
-                    // <-- NUEVO CAMPO DE ESTADO
                     Padding(
                       padding: const EdgeInsets.all(8),
                       child: DropdownButtonFormField<String>(
